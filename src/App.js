@@ -489,7 +489,7 @@ function getScoreTip(label, value) {
   return tips.find(t => value >= t.range[0] && value <= t.range[1]) || tips[tips.length - 1];
 }
 
-function ScoreRing({ value, color, label, size=64 }) {
+function ScoreRing({ value, color, label, size=64, darkMode=true }) {
   const [showTip, setShowTip] = useState(false);
   const r=size*.38, c=2*Math.PI*r, off=c-(Math.min(value,99)/100)*c, cx=size/2, cy=size/2;
   return (
@@ -525,11 +525,11 @@ function ScoreRing({ value, color, label, size=64 }) {
         ) : null;
       })()}
       <svg width={size} height={size} style={{transform:"rotate(-90deg)"}}>
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={5}/>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke={darkMode?"rgba(255,255,255,0.07)":"rgba(0,0,0,0.08)"} strokeWidth={5}/>
         <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={5}
           strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round"
           style={{transition:"stroke-dashoffset .9s cubic-bezier(.4,0,.2,1)"}}/>
-        <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fill="white"
+        <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fill={darkMode?"white":"#0f0f1a"}
           fontSize={size*.2} fontWeight="700"
           style={{transform:`rotate(90deg)`,transformOrigin:`${cx}px ${cy}px`,fontFamily:"'Space Mono',monospace"}}>
           {value}
@@ -1041,7 +1041,7 @@ function AuthScreen({ onLogin }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // GAME CARD
 // ─────────────────────────────────────────────────────────────────────────────
-function GameCard({ game, onClick, locked }) {
+function GameCard({ game, onClick, locked, darkMode=true }) {
   const [hov, setHov] = useState(false);
   if (!game) return null;
   let scores, color, cat, catLbl;
@@ -1086,10 +1086,10 @@ function GameCard({ game, onClick, locked }) {
         <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>
           <Chip label={scores.difficulty} color={scores.difficulty==="Relaxed"?"#4ade80":scores.difficulty==="Challenging"?"#f87171":"#fbbf24"}/>
         </div>
-        <div style={{display:"flex",justifyContent:"space-around",margin:"8px 0",padding:"8px 0",borderTop:"1px solid rgba(255,255,255,0.05)",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
-          <ScoreRing value={scores.t} label="Time"      color={color}/>
-          <ScoreRing value={scores.a} label="Adventure" color={color}/>
-          <ScoreRing value={scores.w} label="Worth It"  color={color}/>
+        <div style={{display:"flex",justifyContent:"space-around",margin:"8px 0",padding:"8px 0",borderTop:`1px solid ${darkMode?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.06)"}`,borderBottom:`1px solid ${darkMode?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.06)"}`}}>
+          <ScoreRing value={scores.t} label="Time"      color={color} darkMode={darkMode}/>
+          <ScoreRing value={scores.a} label="Adventure" color={color} darkMode={darkMode}/>
+          <ScoreRing value={scores.w} label="Worth It"  color={color} darkMode={darkMode}/>
         </div>
         <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace"}}>
           <span>⏱ {scores.hltb.session}</span>
@@ -1558,7 +1558,7 @@ export default function App() {
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:13,marginBottom:26}}>
               {games.map((g,i)=>(
                 <div key={g.id} className="card-anim" style={{animationDelay:`${i*.04}s`}}>
-                  <GameCard game={g} onClick={setSelected} locked={false}/>
+                  <GameCard game={g} onClick={setSelected} locked={false} darkMode={darkMode}/>
                 </div>
               ))}
             </div>
