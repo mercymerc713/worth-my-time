@@ -1251,19 +1251,24 @@ export default function App() {
         exclude_additions: "true",
       });
       if (q) {
+        // When searching — only apply platform filter, ignore all others
+        // so the user always finds what they're looking for
         p.set("search", q);
         p.set("search_precise", "true");
-        p.set("page_size", "40"); // get more results so exact match is in there
+        p.set("page_size", "40");
+        if (f.platform!=="all" && PLATFORM_MAP[f.platform]) p.set("platforms", PLATFORM_MAP[f.platform]);
+      } else {
+        // When browsing (no search) — apply all active filters
+        if (f.platform!=="all" && PLATFORM_MAP[f.platform]) p.set("platforms", PLATFORM_MAP[f.platform]);
+        const gs=[];
+        if (f.time==="short") gs.push("puzzle,arcade,card-games,fighting,racing,sports");
+        if (f.time==="long")  gs.push("role-playing-games-rpg,strategy,simulation");
+        if (f.genre!=="all" && GENRE_MAP[f.genre]) gs.push(GENRE_MAP[f.genre]);
+        if (gs.length) p.set("genres", gs.join(","));
+        if (f.multiplayer==="singleplayer") p.set("tags","singleplayer");
+        if (f.multiplayer==="multiplayer")  p.set("tags","multiplayer");
+        if (f.multiplayer==="co-op")        p.set("tags","co-op");
       }
-      if (f.platform!=="all" && PLATFORM_MAP[f.platform]) p.set("platforms", PLATFORM_MAP[f.platform]);
-      const gs=[];
-      if (f.time==="short") gs.push("puzzle,arcade,card-games,fighting,racing,sports");
-      if (f.time==="long")  gs.push("role-playing-games-rpg,strategy,simulation");
-      if (f.genre!=="all" && GENRE_MAP[f.genre]) gs.push(GENRE_MAP[f.genre]);
-      if (gs.length) p.set("genres", gs.join(","));
-      if (f.multiplayer==="singleplayer") p.set("tags","singleplayer");
-      if (f.multiplayer==="multiplayer")  p.set("tags","multiplayer");
-      if (f.multiplayer==="co-op")        p.set("tags","co-op");
       const res = await fetch(`${RAWG_BASE}/games?${p}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
