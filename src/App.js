@@ -174,23 +174,33 @@ function storesOf(game) {
 // ─────────────────────────────────────────────────────────────────────────────
 // SMALL UI ATOMS
 // ─────────────────────────────────────────────────────────────────────────────
+const SCORE_TOOLTIPS = {
+  "Time":        "How easy is this game to pick up and play in short sessions? Higher = better for busy people.",
+  "Adventure":   "Depth of story, world exploration, and overall adventure. Higher = richer experience.",
+  "Worth It":    "Is this game worth your limited free time? Based on ratings, reviews, and player feedback.",
+  "Time Friendly": "How easy is this game to pick up and play in short sessions? Higher = better for busy people.",
+};
+
 function ScoreRing({ value, color, label, size=64 }) {
   const r=size*.38, c=2*Math.PI*r, off=c-(Math.min(value,99)/100)*c, cx=size/2, cy=size/2;
+  const tip = SCORE_TOOLTIPS[label] || label;
   return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
-      <svg width={size} height={size} style={{transform:"rotate(-90deg)"}}>
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={5}/>
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={5}
-          strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round"
-          style={{transition:"stroke-dashoffset .9s cubic-bezier(.4,0,.2,1)"}}/>
-        <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fill="white"
-          fontSize={size*.2} fontWeight="700"
-          style={{transform:`rotate(90deg)`,transformOrigin:`${cx}px ${cy}px`,fontFamily:"'Space Mono',monospace"}}>
-          {value}
-        </text>
-      </svg>
-      <span style={{fontSize:9,color:"rgba(255,255,255,0.35)",letterSpacing:1.2,textTransform:"uppercase",fontFamily:"'Space Mono',monospace"}}>{label}</span>
-    </div>
+    <Tooltip text={tip}>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,cursor:"help"}}>
+        <svg width={size} height={size} style={{transform:"rotate(-90deg)"}}>
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={5}/>
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={5}
+            strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round"
+            style={{transition:"stroke-dashoffset .9s cubic-bezier(.4,0,.2,1)"}}/>
+          <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fill="white"
+            fontSize={size*.2} fontWeight="700"
+            style={{transform:`rotate(90deg)`,transformOrigin:`${cx}px ${cy}px`,fontFamily:"'Space Mono',monospace"}}>
+            {value}
+          </text>
+        </svg>
+        <span style={{fontSize:9,color:"rgba(255,255,255,0.35)",letterSpacing:1.2,textTransform:"uppercase",fontFamily:"'Space Mono',monospace"}}>{label} ⓘ</span>
+      </div>
+    </Tooltip>
   );
 }
 
@@ -711,7 +721,7 @@ function GameCard({ game, onClick, locked }) {
         transform:hov?"translateY(-4px) scale(1.01)":"translateY(0) scale(1)",
         transition:"all .28s cubic-bezier(.4,0,.2,1)",
         boxShadow:hov?`0 20px 60px ${color}30`:"0 2px 12px rgba(0,0,0,0.4)",
-        background:"#0d0d18",filter:locked?"blur(2px) brightness(0.5)":"none"}}>
+        background:theme.card,filter:locked?"blur(2px) brightness(0.5)":"none"}}>
       <div style={{position:"relative",height:125,overflow:"hidden",background:"#1a1a2e"}}>
         {game.background_image
           ? <img src={game.background_image} alt={game.name} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.8,transition:"transform .4s",transform:hov?"scale(1.05)":"scale(1)"}}/>
@@ -838,6 +848,19 @@ const SORT_MAP     = {rating:"-rating",metacritic:"-metacritic",newest:"-release
 export default function App() {
   const [user, setUser]       = useState(null);
   const [appReady, setAppReady] = useState(false);
+  const [darkMode, setDarkMode] = useState(true);
+  const theme = {
+    bg:       darkMode ? "#080810" : "#f4f4f8",
+    bg2:      darkMode ? "#0d0d18" : "#ffffff",
+    bg3:      darkMode ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.04)",
+    border:   darkMode ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.1)",
+    text:     darkMode ? "white" : "#0f0f1a",
+    textMid:  darkMode ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)",
+    textFade: darkMode ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.35)",
+    card:     darkMode ? "#0d0d18" : "#ffffff",
+    radial1:  darkMode ? "radial-gradient(ellipse at 15% 15%,#1a0a2e 0%,transparent 45%)" : "radial-gradient(ellipse at 15% 15%,#e0d7ff 0%,transparent 45%)",
+    radial2:  darkMode ? "radial-gradient(ellipse at 85% 85%,#0a1628 0%,transparent 45%)" : "radial-gradient(ellipse at 85% 85%,#d7e8ff 0%,transparent 45%)",
+  };
   const [games, setGames]     = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
@@ -992,17 +1015,28 @@ export default function App() {
   return (
     <>
       <link href="https://fonts.googleapis.com/css2?family=Bitter:wght@700;900&family=Space+Mono:wght@400;700&family=Lora:ital@1&display=swap" rel="stylesheet"/>
-      <style>{`*{box-sizing:border-box}body{margin:0;background:#080810}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#0d0d18}::-webkit-scrollbar-thumb{background:#2a2a3e;border-radius:3px}input::placeholder{color:rgba(255,255,255,0.25)}input:focus{outline:none;border-color:rgba(255,255,255,0.25)!important}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}.card-anim{animation:fadeIn .4s ease forwards;opacity:0}`}</style>
+      <style>{`*{box-sizing:border-box}body{margin:0}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#0d0d18}::-webkit-scrollbar-thumb{background:#2a2a3e;border-radius:3px}input::placeholder{color:rgba(255,255,255,0.25)}input:focus{outline:none;border-color:rgba(255,255,255,0.25)!important}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}.card-anim{animation:fadeIn .4s ease forwards;opacity:0}`}</style>
 
-      <div style={{minHeight:"100vh",background:"#080810",backgroundImage:"radial-gradient(ellipse at 15% 15%,#1a0a2e 0%,transparent 45%),radial-gradient(ellipse at 85% 85%,#0a1628 0%,transparent 45%)"}}>
+      <div style={{minHeight:"100vh",background:theme.bg,backgroundImage:`${theme.radial1},${theme.radial2}`,transition:"background .3s,color .3s"}}>
 
         {/* Status Bar */}
         <StatusBar user={user} onUpgrade={()=>setShowPaywall(true)} onLogout={handleLogout}/>
+        {/* Theme toggle */}
+        <div style={{position:"fixed",bottom:20,right:20,zIndex:100}}>
+          <button onClick={()=>setDarkMode(!darkMode)} title={darkMode?"Switch to Light Mode":"Switch to Dark Mode"}
+            style={{background:darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.1)",
+              border:`1px solid ${darkMode?"rgba(255,255,255,0.2)":"rgba(0,0,0,0.15)"}`,
+              borderRadius:"50%",width:44,height:44,cursor:"pointer",
+              fontSize:20,display:"flex",alignItems:"center",justifyContent:"center",
+              boxShadow:"0 4px 20px rgba(0,0,0,0.3)",transition:"all .2s"}}>
+            {darkMode ? "☀️" : "🌙"}
+          </button>
+        </div>
 
         {/* Header */}
         <div style={{textAlign:"center",padding:"32px 20px 20px"}}>
-          <h1 style={{margin:"0 0 6px",fontSize:"clamp(30px,6vw,54px)",fontFamily:"'Bitter',serif",fontWeight:900,color:"white",lineHeight:1.05,letterSpacing:-1}}>Worth My Time?</h1>
-          <p style={{color:"rgba(255,255,255,0.38)",fontSize:13,margin:"0 auto",maxWidth:340,lineHeight:1.7,fontFamily:"'Lora',serif",fontStyle:"italic"}}>
+          <h1 style={{margin:"0 0 6px",fontSize:"clamp(30px,6vw,54px)",fontFamily:"'Bitter',serif",fontWeight:900,color:theme.text,lineHeight:1.05,letterSpacing:-1}}>Worth My Time?</h1>
+          <p style={{color:theme.textMid,fontSize:13,margin:"0 auto",maxWidth:340,lineHeight:1.7,fontFamily:"'Lora',serif",fontStyle:"italic"}}>
             Real game intelligence for busy people.
           </p>
         </div>
@@ -1020,7 +1054,7 @@ export default function App() {
 
         {/* Search */}
         <div style={{maxWidth:540,margin:"0 auto 14px",padding:"0 16px"}}>
-          <Input placeholder="Search 500,000+ games..." value={search} onChange={e=>setSearch(e.target.value)} style={{padding:"12px 16px",fontSize:12}}/>
+          <Input placeholder="Search 500,000+ games..." value={search} onChange={e=>setSearch(e.target.value)} style={{padding:"12px 16px",fontSize:12,background:darkMode?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.05)",color:theme.text,border:`1px solid ${theme.border}`}}/>
         </div>
 
         {/* Filter Toggle */}
@@ -1125,7 +1159,7 @@ export default function App() {
           )}
         </div>
 
-        <div style={{textAlign:"center",paddingBottom:26,color:"rgba(255,255,255,0.12)",fontSize:9,letterSpacing:2,fontFamily:"'Space Mono',monospace"}}>
+        <div style={{textAlign:"center",paddingBottom:26,color:theme.textFade,fontSize:9,letterSpacing:2,fontFamily:"'Space Mono',monospace"}}>
           WORTH MY TIME · RAWG.IO · HLTB · YOUR SCORES
         </div>
       </div>
