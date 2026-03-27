@@ -48,11 +48,13 @@ async function fetchDeckStatus(steamAppId) {
   if (!steamAppId) return "unknown";
   if (deckCache[steamAppId]) return deckCache[steamAppId];
   try {
-    const res = await fetch(`https://store.steampowered.com/api/appdetails?appids=${steamAppId}&filters=categories`);
+    const res = await fetch(
+      `https://store.steampowered.com/api/appdetails?appids=${steamAppId}&filters=categories`,
+      { signal: AbortSignal.timeout(4000) }
+    );
+    if (!res.ok) return "unknown";
     const data = await res.json();
-    const cats = data[steamAppId]?.data?.categories || [];
-    const hasDeck = cats.some(c => c.id === 49 || c.id === 50 || c.id === 51);
-    // Category 49 = Verified, 50 = Playable, 51 = Unsupported
+    const cats = (data[steamAppId]?.data?.categories) || [];
     let status = "unknown";
     if (cats.some(c => c.id === 49)) status = "verified";
     else if (cats.some(c => c.id === 50)) status = "playable";
@@ -64,15 +66,18 @@ async function fetchDeckStatus(steamAppId) {
 
 async function fetchProtonRating(steamAppId) {
   if (!steamAppId) return null;
-  if (protonCache[steamAppId]) return protonCache[steamAppId];
+  if (protonCache[steamAppId] !== undefined) return protonCache[steamAppId];
   try {
-    const res = await fetch(`https://www.protondb.com/api/v1/reports/summaries/${steamAppId}.json`);
-    if (!res.ok) return null;
+    const res = await fetch(
+      `https://www.protondb.com/api/v1/reports/summaries/${steamAppId}.json`,
+      { signal: AbortSignal.timeout(4000) }
+    );
+    if (!res.ok) { protonCache[steamAppId] = null; return null; }
     const data = await res.json();
-    const tier = data.tier?.toLowerCase();
-    protonCache[steamAppId] = tier || null;
-    return tier || null;
-  } catch { return null; }
+    const tier = data.tier?.toLowerCase() || null;
+    protonCache[steamAppId] = tier;
+    return tier;
+  } catch { protonCache[steamAppId] = null; return null; }
 }
 
 function getSteamAppId(game) {
@@ -540,11 +545,15 @@ function GameCard({ game, onClick, locked }) {
   const catLbl = {short:"⚡ Quick",medium:"🕐 Mid",long:"🏔 Long"}[cat];
 
   useEffect(() => {
-    const appId = getSteamAppId(game);
-    if (appId) {
-      fetchDeckStatus(appId).then(setDeckStatus);
-      fetchProtonRating(appId).then(setProtonTier);
-    }
+    let cancelled = false;
+    try {
+      const appId = getSteamAppId(game);
+      if (appId) {
+        fetchDeckStatus(appId).catch(() => "unknown").then(d => { if (!cancelled) setDeckStatus(d || "unknown"); });
+        fetchProtonRating(appId).catch(() => null).then(p => { if (!cancelled) setProtonTier(p); });
+      }
+    } catch {}
+    return () => { cancelled = true; };
   }, [game.id]);
 
   return (
