@@ -71,12 +71,10 @@ async function sbFetch(path, options = {}) {
 // ─────────────────────────────────────────────────────────────────────────────
 // STORAGE HELPERS (persistent across sessions)
 // ─────────────────────────────────────────────────────────────────────────────
+// ─── LOCAL STORAGE (for session only) ────────────────────────────────────
 const store = {
   async get(key) {
-    try {
-      const val = localStorage.getItem(key);
-      return val ? JSON.parse(val) : null;
-    } catch { return null; }
+    try { const val = localStorage.getItem(key); return val ? JSON.parse(val) : null; } catch { return null; }
   },
   async set(key, val) {
     try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
@@ -85,6 +83,55 @@ const store = {
     try { localStorage.removeItem(key); } catch {}
   },
 };
+
+// ─── SUPABASE ACCOUNT FUNCTIONS ───────────────────────────────────────────
+async function sbGetAccount(email) {
+  try {
+    const data = await sbFetch(`/accounts?email=eq.${encodeURIComponent(email.toLowerCase().trim())}&limit=1`);
+    return data?.[0] || null;
+  } catch { return null; }
+}
+
+async function sbCreateAccount(email, name, passwordHash) {
+  try {
+    const now = Date.now();
+    const trialEnds = now + TRIAL_DAYS * 24 * 60 * 60 * 1000;
+    const data = await sbFetch("/accounts", {
+      method: "POST",
+      body: JSON.stringify({
+        email: email.toLowerCase().trim(),
+        name: name.trim(),
+        password_hash: passwordHash,
+        trial_start_at: now,
+        trial_ends_at: trialEnds,
+        is_paid: false,
+      }),
+    });
+    return data?.[0] || null;
+  } catch(e) { console.error("sbCreateAccount error:", e); return null; }
+}
+
+async function sbUpdateAccount(email, updates) {
+  try {
+    await sbFetch(`/accounts?email=eq.${encodeURIComponent(email.toLowerCase().trim())}`, {
+      method: "PATCH",
+      body: JSON.stringify(updates),
+    });
+    return true;
+  } catch { return false; }
+}
+
+function accountToUser(account) {
+  return {
+    name: account.name,
+    email: account.email,
+    joinedAt: new Date(account.created_at).getTime(),
+    trialStartAt: account.trial_start_at,
+    trialEndsAt: account.trial_ends_at,
+    isPaid: account.is_paid,
+    paidAt: account.paid_at,
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ACCOUNT HELPERS
@@ -861,7 +908,7 @@ function AuthScreen({ onLogin }) {
     if (!email) { setErr("Please enter your email address."); return; }
     if (!validateEmail(email)) { setErr("Please enter a valid email address."); return; }
     const emailKey = email.toLowerCase().trim();
-    const account = await store.get(`wmt_account_${emailKey}`);
+    const account = await sbGetAccount(emailKey);
     if (!account) { setErr("No account found with this email."); return; }
     // Generate 6-digit code
     const code = Math.floor(100000 + Math.random() * 900000).toString();
@@ -893,10 +940,9 @@ function AuthScreen({ onLogin }) {
     setErr(""); setSuccess("");
     if (!newPass || newPass.length < 8) { setErr("Password must be at least 8 characters."); return; }
     const emailKey = email.toLowerCase().trim();
-    const account = await store.get(`wmt_account_${emailKey}`);
-    if (!account) { setErr("Account not found."); return; }
-    // Update password
-    await store.set(`wmt_account_${emailKey}`, { ...account, passwordHash: btoa(newPass) });
+    // Update password in Supabase
+    const ok = await sbUpdateAccount(emailKey, { password_hash: btoa(newPass) });
+    if (!ok) { setErr("Failed to reset password. Please try again."); return; }
     await store.del(`wmt_reset_${emailKey}`);
     setSuccess("Password reset successfully! You can now sign in.");
     setMode("login");
@@ -908,85 +954,68 @@ function AuthScreen({ onLogin }) {
 
   const submit = async () => {
     setErr("");
-
-    // Email validation
     if (!email) { setErr("Email address is required."); return; }
     if (!validateEmail(email)) { setErr("Please enter a valid email address."); return; }
 
     if (mode === "signup") {
-      // Step 1 — validate form and send verification code
+      // Step 1 — validate and send verification code
       if (verifyStep === 1) {
         if (!name.trim()) { setErr("Your name is required."); return; }
         if (!validatePassword(pass)) { setErr("Password must be at least 8 characters."); return; }
-
-        // Check if account already exists
         const emailKey = email.toLowerCase().trim();
-        const existing = await store.get(`wmt_account_${emailKey}`);
+
+        // Check if account already exists in Supabase
+        const existing = await sbGetAccount(emailKey);
         if (existing) { setErr("An account with this email already exists. Please sign in."); return; }
 
-        // Generate 6-digit verification code
+        // Generate and store verification code locally (temp)
         const code = Math.floor(100000 + Math.random() * 900000).toString();
         await store.set(`wmt_verify_${emailKey}`, { code, expiresAt: Date.now() + 15 * 60 * 1000 });
+        setPendingUser({ name: name.trim(), emailKey, passwordHash: btoa(pass) });
 
-        // Save pending user data
-        const user = createUser(name.trim(), emailKey);
-        setPendingUser({ user, emailKey, passwordHash: btoa(pass) });
-
-        // Send real email via EmailJS
+        // Send verification email
         const sent = await sendVerificationEmail(emailKey, name.trim(), code);
-        if (sent) {
-          setSuccess(`Verification code sent to ${emailKey} — check your inbox and spam folder.`);
-        } else {
-          // Fallback — show on screen if email fails
-          setSuccess(`Couldn't send email. Your code is: ${code}`);
-        }
+        setSuccess(sent
+          ? `Verification code sent to ${emailKey} — check your inbox and spam folder.`
+          : `Couldn't send email. Your code is: ${code}`);
         setVerifyStep(2);
         return;
       }
 
-      // Step 2 — verify the code and create account
+      // Step 2 — verify code and create account in Supabase
       if (verifyStep === 2) {
         const emailKey = email.toLowerCase().trim();
         const stored = await store.get(`wmt_verify_${emailKey}`);
         if (!stored) { setErr("Verification code expired. Please start over."); setVerifyStep(1); return; }
         if (Date.now() > stored.expiresAt) { setErr("Code expired. Please start over."); await store.del(`wmt_verify_${emailKey}`); setVerifyStep(1); return; }
         if (enteredVerifyCode.trim() !== stored.code) { setErr("Incorrect code. Please try again."); return; }
-
-        // Code verified — create account
         if (!pendingUser) { setErr("Session expired. Please start over."); setVerifyStep(1); return; }
-        await store.set(`wmt_account_${emailKey}`, { name: pendingUser.user.name, email: emailKey, passwordHash: pendingUser.passwordHash });
-        await store.set(`wmt_profile_${emailKey}`, pendingUser.user);
+
+        // Create account in Supabase
+        const account = await sbCreateAccount(emailKey, pendingUser.name, pendingUser.passwordHash);
+        if (!account) { setErr("Failed to create account. Please try again."); return; }
+
         await store.del(`wmt_verify_${emailKey}`);
-        setVerifyStep(1);
-        setEnteredVerifyCode("");
-        setPendingUser(null);
-        setSuccess("");
-        onLogin(pendingUser.user);
+        setVerifyStep(1); setEnteredVerifyCode(""); setPendingUser(null); setSuccess("");
+
+        const user = accountToUser(account);
+        await store.set("wmt_user", user); // cache session locally
+        onLogin(user);
         return;
       }
 
     } else {
-      // Sign in validation
+      // Sign in — look up account in Supabase
       if (!pass) { setErr("Password is required."); return; }
-
-      // Check account exists
       const emailKey = email.toLowerCase().trim();
-      const account = await store.get(`wmt_account_${emailKey}`);
+
+      const account = await sbGetAccount(emailKey);
       if (!account) { setErr("No account found with this email. Please create an account."); return; }
+      if (btoa(pass) !== account.password_hash) { setErr("Incorrect password. Please try again."); return; }
 
-      // Check password
-      if (btoa(pass) !== account.passwordHash) { setErr("Incorrect password. Please try again."); return; }
-
-      // Always load the saved user profile so trial dates and paid status are preserved
-      const savedUser = await store.get(`wmt_profile_${emailKey}`);
-      if (savedUser) {
-        onLogin(savedUser);
-      } else {
-        // Fallback — create fresh session (first time signing in after account creation)
-        const user = createUser(account.name, account.email);
-        await store.set(`wmt_profile_${emailKey}`, user);
-        onLogin(user);
-      }
+      const user = accountToUser(account);
+      await store.set("wmt_user", user); // cache session locally
+      onLogin(user);
     }
   };
 
@@ -1763,12 +1792,16 @@ export default function App() {
   const [userProfile, setUserProfile] = useState(null);
   const debRef = useRef(null);
 
-  // Load user from storage
+  // Load user from storage — refresh from Supabase to get latest trial/paid status
   useEffect(() => {
-    store.get("wmt_user").then(u => {
-      if (u) {
-        setUser(u);
-        getProfile(u.email).then(p => setUserProfile(p));
+    store.get("wmt_user").then(async cached => {
+      if (cached) {
+        // Refresh from Supabase to get latest paid status and trial info
+        const fresh = await sbGetAccount(cached.email);
+        const user = fresh ? accountToUser(fresh) : cached;
+        await store.set("wmt_user", user);
+        setUser(user);
+        getProfile(user.email).then(p => setUserProfile(p));
       }
       setAppReady(true);
     });
@@ -1781,9 +1814,10 @@ export default function App() {
   const handleLogout = async () => { await store.del("wmt_user"); setUser(null); setGames([]); setHasLoaded(false); };
   const handlePaid = async () => {
     const updated = { ...user, isPaid:true, paidAt:Date.now() };
+    // Update in Supabase
+    await sbUpdateAccount(user.email, { is_paid: true, paid_at: Date.now() });
+    // Update local session cache
     await store.set("wmt_user", updated);
-    // Also update persistent profile so paid status survives logout/login
-    await store.set(`wmt_profile_${user.email}`, updated);
     setUser(updated);
     setShowPaywall(false);
   };
