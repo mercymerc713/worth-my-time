@@ -404,9 +404,11 @@ function AuthScreen({ onLogin }) {
       const existing = await store.get(`wmt_account_${email.toLowerCase().trim()}`);
       if (existing) { setErr("An account with this email already exists. Please sign in."); return; }
 
-      // Create and store account
-      const user = createUser(name.trim(), email.toLowerCase().trim());
-      await store.set(`wmt_account_${email.toLowerCase().trim()}`, { name: user.name, email: user.email, passwordHash: btoa(pass) });
+      // Create and store account + profile separately
+      const emailKey = email.toLowerCase().trim();
+      const user = createUser(name.trim(), emailKey);
+      await store.set(`wmt_account_${emailKey}`, { name: user.name, email: user.email, passwordHash: btoa(pass) });
+      await store.set(`wmt_profile_${emailKey}`, user);
       onLogin(user);
 
     } else {
@@ -414,18 +416,21 @@ function AuthScreen({ onLogin }) {
       if (!pass) { setErr("Password is required."); return; }
 
       // Check account exists
-      const account = await store.get(`wmt_account_${email.toLowerCase().trim()}`);
+      const emailKey = email.toLowerCase().trim();
+      const account = await store.get(`wmt_account_${emailKey}`);
       if (!account) { setErr("No account found with this email. Please create an account."); return; }
 
       // Check password
       if (btoa(pass) !== account.passwordHash) { setErr("Incorrect password. Please try again."); return; }
 
-      // Load or create user session
-      const existingUser = await store.get("wmt_user");
-      if (existingUser && existingUser.email === email.toLowerCase().trim()) {
-        onLogin(existingUser);
+      // Always load the saved user profile so trial dates and paid status are preserved
+      const savedUser = await store.get(`wmt_profile_${emailKey}`);
+      if (savedUser) {
+        onLogin(savedUser);
       } else {
+        // Fallback — create fresh session (first time signing in after account creation)
         const user = createUser(account.name, account.email);
+        await store.set(`wmt_profile_${emailKey}`, user);
         onLogin(user);
       }
     }
@@ -654,6 +659,8 @@ export default function App() {
   const handlePaid = async () => {
     const updated = { ...user, isPaid:true, paidAt:Date.now() };
     await store.set("wmt_user", updated);
+    // Also update persistent profile so paid status survives logout/login
+    await store.set(`wmt_profile_${user.email}`, updated);
     setUser(updated);
     setShowPaywall(false);
   };
