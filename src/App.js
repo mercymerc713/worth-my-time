@@ -36,13 +36,16 @@ const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/8x24gsg9K0bT63XcrU9Zm00";
 // ─────────────────────────────────────────────────────────────────────────────
 const store = {
   async get(key) {
-    try { const r = await window.storage.get(key); return r ? JSON.parse(r.value) : null; } catch { return null; }
+    try {
+      const val = localStorage.getItem(key);
+      return val ? JSON.parse(val) : null;
+    } catch { return null; }
   },
   async set(key, val) {
-    try { await window.storage.set(key, JSON.stringify(val)); } catch {}
+    try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
   },
   async del(key) {
-    try { await window.storage.delete(key); } catch {}
+    try { localStorage.removeItem(key); } catch {}
   },
 };
 
