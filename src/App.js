@@ -535,7 +535,7 @@ function ScoreRing({ value, color, label, size=64 }) {
           {value}
         </text>
       </svg>
-      <span style={{fontSize:9,color:"rgba(255,255,255,0.35)",letterSpacing:1.2,textTransform:"uppercase",fontFamily:"'Space Mono',monospace"}}>{label} ⓘ</span>
+      <span style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.35)":"rgba(0,0,0,0.45)",letterSpacing:1.2,textTransform:"uppercase",fontFamily:"'Space Mono',monospace"}}>{label} ⓘ</span>
     </div>
   );
 }
@@ -1067,7 +1067,9 @@ function GameCard({ game, onClick, locked }) {
         transform:hov?"translateY(-4px) scale(1.01)":"translateY(0) scale(1)",
         transition:"all .28s cubic-bezier(.4,0,.2,1)",
         boxShadow:hov?`0 20px 60px ${color}30`:"0 2px 12px rgba(0,0,0,0.4)",
-        background:"#0d0d18",filter:locked?"blur(2px) brightness(0.5)":"none"}}>
+        background:darkMode?"#0d0d18":"#ffffff",
+        filter:locked?"blur(2px) brightness(0.5)":"none",
+        boxShadow:hov?`0 20px 60px ${color}30`:darkMode?"0 2px 12px rgba(0,0,0,0.4)":"0 2px 12px rgba(0,0,0,0.1)"}}>
       <div style={{position:"relative",height:125,overflow:"hidden",background:"#1a1a2e"}}>
         {game.background_image
           ? <img src={game.background_image} alt={game.name} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.8,transition:"transform .4s",transform:hov?"scale(1.05)":"scale(1)"}}/>
@@ -1077,8 +1079,8 @@ function GameCard({ game, onClick, locked }) {
         {game.metacritic && <div style={{position:"absolute",top:8,right:8,background:game.metacritic>74?"#16a34a":game.metacritic>59?"#ca8a04":"#dc2626",borderRadius:7,padding:"2px 7px",fontSize:10,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>MC {game.metacritic}</div>}
       </div>
       <div style={{padding:"11px 13px 13px"}}>
-        <h3 style={{margin:"0 0 3px",fontSize:14,fontFamily:"'Bitter',serif",fontWeight:700,color:"white",lineHeight:1.2,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{game.name}</h3>
-        <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",marginBottom:7}}>
+        <h3 style={{margin:"0 0 3px",fontSize:14,fontFamily:"'Bitter',serif",fontWeight:700,color:darkMode?"white":"#0f0f1a",lineHeight:1.2,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{game.name}</h3>
+        <div style={{fontSize:10,color:darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.45)",fontFamily:"'Space Mono',monospace",marginBottom:7}}>
           {(game.genres||[]).slice(0,2).map(g=>g.name).join(" · ")}
         </div>
         <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>
@@ -1476,7 +1478,7 @@ export default function App() {
         {/* Filter Toggle */}
         {access && (
           <div style={{maxWidth:900,margin:"0 auto 14px",padding:"0 16px"}}>
-            <button onClick={()=>setShowFilters(!showFilters)} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:11,padding:"9px 16px",color:"rgba(255,255,255,0.6)",cursor:"pointer",fontSize:11,fontFamily:"'Space Mono',monospace",display:"flex",alignItems:"center",gap:8}}>
+            <button onClick={()=>setShowFilters(!showFilters)} style={{background:darkMode?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.05)",border:`1px solid ${darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.15)"}`,borderRadius:11,padding:"9px 16px",color:darkMode?"rgba(255,255,255,0.6)":"rgba(0,0,0,0.6)",cursor:"pointer",fontSize:11,fontFamily:"'Space Mono',monospace",display:"flex",alignItems:"center",gap:8}}>
               ⚙ Filters {showFilters?"▲":"▼"}
             </button>
             {showFilters && (
@@ -1489,7 +1491,7 @@ export default function App() {
                   ["👥 PLAY STYLE",[["all","All"],["singleplayer","Solo"],["multiplayer","Multi"],["co-op","Co-op"]], "multiplayer", "#34d399"],
                 ].map(([label, opts, key, color])=>(
                   <div key={key}>
-                    <div style={{fontSize:9,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:6}}>{label}</div>
+                    <div style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.45)",fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:6}}>{label}</div>
                     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                       {opts.map(([v,l])=>{
                         const active=filters[key]===v;
@@ -1521,7 +1523,7 @@ export default function App() {
         {/* Sort & count */}
         {hasLoaded && (
           <div style={{maxWidth:900,margin:"0 auto 12px",padding:"0 16px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace"}}>{total.toLocaleString()} games</div>
+            <div style={{fontSize:10,color:darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.45)",fontFamily:"'Space Mono',monospace"}}>{total.toLocaleString()} games</div>
             <div style={{display:"flex",gap:5}}>
               {[["newest","🆕 Newest"],["rating","⭐ Top Rated"],["metacritic","📊 Metacritic"],["popular","🔥 Popular"]].map(([v,l])=>(
                 <button key={v} onClick={()=>{setSortBy(v);setPage(1);}} style={{background:sortBy===v?"rgba(167,139,250,0.2)":"transparent",color:sortBy===v?"#a78bfa":"rgba(255,255,255,0.3)",border:`1px solid ${sortBy===v?"#a78bfa50":"rgba(255,255,255,0.07)"}`,borderRadius:7,padding:"4px 9px",cursor:"pointer",fontSize:10,fontFamily:"'Space Mono',monospace",transition:"all .2s"}}>{l}</button>
@@ -1535,8 +1537,8 @@ export default function App() {
           {!hasLoaded && !loading && (
             <div style={{textAlign:"center",padding:"48px 20px"}}>
               <div style={{fontSize:42,marginBottom:12}}>🎮</div>
-              <h2 style={{color:"white",fontFamily:"'Bitter',serif",margin:"0 0 8px"}}>500,000+ Games Ready</h2>
-              <p style={{color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace",fontSize:11,marginBottom:22}}>Search or browse the full database</p>
+              <h2 style={{color:darkMode?"white":"#0f0f1a",fontFamily:"'Bitter',serif",margin:"0 0 8px"}}>500,000+ Games Ready</h2>
+              <p style={{color:darkMode?"rgba(255,255,255,0.4)":"rgba(0,0,0,0.5)",fontFamily:"'Space Mono',monospace",fontSize:11,marginBottom:22}}>Search or browse the full database</p>
               <Btn onClick={()=>fetchGames("",filters,"rating",1)} variant="primary" style={{padding:"12px 26px",fontSize:12}}>Browse Top Rated →</Btn>
             </div>
           )}
@@ -1546,7 +1548,7 @@ export default function App() {
               <div style={{display:"inline-flex",gap:6}}>
                 {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:"#a78bfa",animation:"pulse 1.2s ease infinite",animationDelay:`${i*.2}s`}}/>)}
               </div>
-              <div style={{color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",fontSize:11,marginTop:10}}>Searching the database...</div>
+              <div style={{color:darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.45)",fontFamily:"'Space Mono',monospace",fontSize:11,marginTop:10}}>Searching the database...</div>
             </div>
           )}
 
@@ -1563,13 +1565,13 @@ export default function App() {
           )}
 
           {!loading && hasLoaded && games.length===0 && !error && (
-            <div style={{textAlign:"center",padding:36,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",fontSize:11}}>No games found. Try adjusting your filters.</div>
+            <div style={{textAlign:"center",padding:36,color:darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.45)",fontFamily:"'Space Mono',monospace",fontSize:11}}>No games found. Try adjusting your filters.</div>
           )}
 
           {hasLoaded && !loading && total>20 && (
             <div style={{display:"flex",justifyContent:"center",gap:10,alignItems:"center",paddingBottom:36}}>
               <Btn onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1} variant="ghost" style={{padding:"7px 13px",fontSize:11,borderRadius:8,opacity:page===1?.3:1}}>← Prev</Btn>
-              <span style={{color:"rgba(255,255,255,0.3)",fontSize:11,fontFamily:"'Space Mono',monospace"}}>Page {page} of {Math.min(Math.ceil(total/20),500)}</span>
+              <span style={{color:darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.5)",fontSize:11,fontFamily:"'Space Mono',monospace"}}>Page {page} of {Math.min(Math.ceil(total/20),500)}</span>
               <Btn onClick={()=>setPage(p=>p+1)} variant="ghost" style={{padding:"7px 13px",fontSize:11,borderRadius:8}}>Next →</Btn>
             </div>
           )}
