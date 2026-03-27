@@ -392,6 +392,10 @@ function AuthScreen({ onLogin }) {
   const [enteredCode, setEnteredCode] = useState("");
   const [newPass, setNewPass] = useState("");
   const [resetStep, setResetStep] = useState(1); // 1=enter email, 2=enter code, 3=new password
+  const [verifyStep, setVerifyStep] = useState(1); // 1=fill form, 2=verify email code
+  const [verifyCode, setVerifyCode] = useState("");
+  const [enteredVerifyCode, setEnteredVerifyCode] = useState("");
+  const [pendingUser, setPendingUser] = useState(null);
 
   const validateEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e.trim());
 
@@ -469,20 +473,49 @@ function AuthScreen({ onLogin }) {
     if (!validateEmail(email)) { setErr("Please enter a valid email address."); return; }
 
     if (mode === "signup") {
-      // Signup validation
-      if (!name.trim()) { setErr("Your name is required."); return; }
-      if (!validatePassword(pass)) { setErr("Password must be at least 8 characters."); return; }
+      // Step 1 — validate form and send verification code
+      if (verifyStep === 1) {
+        if (!name.trim()) { setErr("Your name is required."); return; }
+        if (!validatePassword(pass)) { setErr("Password must be at least 8 characters."); return; }
 
-      // Check if account already exists
-      const existing = await store.get(`wmt_account_${email.toLowerCase().trim()}`);
-      if (existing) { setErr("An account with this email already exists. Please sign in."); return; }
+        // Check if account already exists
+        const emailKey = email.toLowerCase().trim();
+        const existing = await store.get(`wmt_account_${emailKey}`);
+        if (existing) { setErr("An account with this email already exists. Please sign in."); return; }
 
-      // Create and store account + profile separately
-      const emailKey = email.toLowerCase().trim();
-      const user = createUser(name.trim(), emailKey);
-      await store.set(`wmt_account_${emailKey}`, { name: user.name, email: user.email, passwordHash: btoa(pass) });
-      await store.set(`wmt_profile_${emailKey}`, user);
-      onLogin(user);
+        // Generate 6-digit verification code
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        await store.set(`wmt_verify_${emailKey}`, { code, expiresAt: Date.now() + 15 * 60 * 1000 });
+
+        // Save pending user data
+        const user = createUser(name.trim(), emailKey);
+        setPendingUser({ user, emailKey, passwordHash: btoa(pass) });
+        setVerifyCode(code); // show on screen since EmailJS not configured yet
+        setSuccess(`Verification code sent! Your code is: ${code}`);
+        setVerifyStep(2);
+        return;
+      }
+
+      // Step 2 — verify the code and create account
+      if (verifyStep === 2) {
+        const emailKey = email.toLowerCase().trim();
+        const stored = await store.get(`wmt_verify_${emailKey}`);
+        if (!stored) { setErr("Verification code expired. Please start over."); setVerifyStep(1); return; }
+        if (Date.now() > stored.expiresAt) { setErr("Code expired. Please start over."); await store.del(`wmt_verify_${emailKey}`); setVerifyStep(1); return; }
+        if (enteredVerifyCode.trim() !== stored.code) { setErr("Incorrect code. Please try again."); return; }
+
+        // Code verified — create account
+        if (!pendingUser) { setErr("Session expired. Please start over."); setVerifyStep(1); return; }
+        await store.set(`wmt_account_${emailKey}`, { name: pendingUser.user.name, email: emailKey, passwordHash: pendingUser.passwordHash });
+        await store.set(`wmt_profile_${emailKey}`, pendingUser.user);
+        await store.del(`wmt_verify_${emailKey}`);
+        setVerifyStep(1);
+        setEnteredVerifyCode("");
+        setPendingUser(null);
+        setSuccess("");
+        onLogin(pendingUser.user);
+        return;
+      }
 
     } else {
       // Sign in validation
@@ -528,7 +561,7 @@ function AuthScreen({ onLogin }) {
           {mode !== "forgot" && (
             <div style={{display:"flex",background:"rgba(0,0,0,0.4)",borderRadius:11,padding:3,marginBottom:22,gap:3}}>
               {["signup","login"].map(m=>(
-                <button key={m} onClick={()=>{setMode(m);setErr("");setSuccess("");setResetStep(1);}}
+                <button key={m} onClick={()=>{setMode(m);setErr("");setSuccess("");setResetStep(1);setVerifyStep(1);setEnteredVerifyCode("");}}
                   style={{flex:1,background:mode===m?"white":"transparent",color:mode===m?"#07070f":"rgba(255,255,255,0.4)",border:"none",borderRadius:9,padding:"9px",cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"'Space Mono',monospace",transition:"all .2s"}}>
                   {m==="signup"?"Create Account":"Sign In"}
                 </button>
@@ -539,27 +572,62 @@ function AuthScreen({ onLogin }) {
           {/* SIGN UP / SIGN IN */}
           {mode !== "forgot" && (
             <>
-              <div style={{display:"flex",flexDirection:"column",gap:12}}>
-                {mode==="signup" && <Input placeholder="Your name" value={name} onChange={e=>setName(e.target.value)}/>}
-                <Input placeholder="Email address" value={email} onChange={e=>setEmail(e.target.value)}/>
-                <Input placeholder="Password" type="password" value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
-              </div>
-              {err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>⚠ {err}</div>}
-              {success && <div style={{color:"#4ade80",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>✓ {success}</div>}
-              <Btn onClick={submit} variant="purple" style={{width:"100%",marginTop:16}}>
-                {mode==="signup" ? "Create Account & Start Trial →" : "Sign In →"}
-              </Btn>
-              {mode==="login" && (
-                <button onClick={()=>{setMode("forgot");setErr("");setSuccess("");setResetStep(1);}}
-                  style={{display:"block",margin:"12px auto 0",background:"none",border:"none",color:"rgba(255,255,255,0.35)",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",textDecoration:"underline"}}>
-                  Forgot your password?
-                </button>
+              {/* Signup step 1 — fill form */}
+              {mode === "signup" && verifyStep === 1 && (
+                <>
+                  <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                    <Input placeholder="Your name" value={name} onChange={e=>setName(e.target.value)}/>
+                    <Input placeholder="Email address" value={email} onChange={e=>setEmail(e.target.value)}/>
+                    <Input placeholder="Password (min 8 characters)" type="password" value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+                  </div>
+                  {err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>⚠ {err}</div>}
+                  <Btn onClick={submit} variant="purple" style={{width:"100%",marginTop:16}}>Send Verification Code →</Btn>
+                  <div style={{marginTop:12,fontSize:10,color:"rgba(255,255,255,0.25)",fontFamily:"'Space Mono',monospace",textAlign:"center",lineHeight:1.6}}>
+                    We'll verify your email before creating your account<br/>
+                    7 days free · No credit card required · {PRICE} one-time after trial
+                  </div>
+                </>
               )}
-              {mode==="signup" && (
-                <div style={{marginTop:12,fontSize:10,color:"rgba(255,255,255,0.25)",fontFamily:"'Space Mono',monospace",textAlign:"center",lineHeight:1.6}}>
-                  Password must be at least 8 characters<br/>
-                  7 days free · No credit card required · {PRICE} one-time after trial
-                </div>
+
+              {/* Signup step 2 — verify email */}
+              {mode === "signup" && verifyStep === 2 && (
+                <>
+                  <div style={{textAlign:"center",marginBottom:16}}>
+                    <div style={{fontSize:28,marginBottom:6}}>📧</div>
+                    <div style={{fontSize:13,color:"white",fontFamily:"'Space Mono',monospace",fontWeight:700,marginBottom:4}}>Check your email</div>
+                    <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace",lineHeight:1.6}}>
+                      We sent a 6-digit code to<br/>
+                      <span style={{color:"#a78bfa"}}>{email}</span>
+                    </div>
+                  </div>
+                  {success && <div style={{color:"#4ade80",fontSize:11,fontFamily:"'Space Mono',monospace",marginBottom:12,textAlign:"center",background:"rgba(74,222,128,0.08)",borderRadius:8,padding:"8px 12px"}}>✓ {success}</div>}
+                  <Input placeholder="Enter 6-digit code" value={enteredVerifyCode}
+                    onChange={e=>setEnteredVerifyCode(e.target.value.replace(/\D/g,"").slice(0,6))}
+                    onKeyDown={e=>e.key==="Enter"&&submit()}/>
+                  {err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>⚠ {err}</div>}
+                  <Btn onClick={submit} variant="purple" style={{width:"100%",marginTop:14}}>Verify & Create Account →</Btn>
+                  <button onClick={()=>{setVerifyStep(1);setErr("");setSuccess("");setEnteredVerifyCode("");}}
+                    style={{display:"block",margin:"10px auto 0",background:"none",border:"none",color:"rgba(255,255,255,0.3)",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
+                    ← Use a different email
+                  </button>
+                </>
+              )}
+
+              {/* Sign in form */}
+              {mode === "login" && (
+                <>
+                  <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                    <Input placeholder="Email address" value={email} onChange={e=>setEmail(e.target.value)}/>
+                    <Input placeholder="Password" type="password" value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+                  </div>
+                  {err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>⚠ {err}</div>}
+                  {success && <div style={{color:"#4ade80",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>✓ {success}</div>}
+                  <Btn onClick={submit} variant="purple" style={{width:"100%",marginTop:16}}>Sign In →</Btn>
+                  <button onClick={()=>{setMode("forgot");setErr("");setSuccess("");setResetStep(1);}}
+                    style={{display:"block",margin:"12px auto 0",background:"none",border:"none",color:"rgba(255,255,255,0.35)",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",textDecoration:"underline"}}>
+                    Forgot your password?
+                  </button>
+                </>
               )}
             </>
           )}
