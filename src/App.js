@@ -713,10 +713,64 @@ export default function App() {
   useEffect(() => { if (hasLoaded && user && access) fetchGames(search,filters,sortBy,page); }, [page]);
 
   const handleTimeSearch = () => {
-    const m=parseInt(minutes); if (!m) return;
-    const cat=m<=40?"short":m<=100?"medium":"long";
-    const nf={...filters,time:cat}; setFilters(nf); setPage(1); fetchGames(search,nf,sortBy,1);
+    const m = parseInt(minutes); if (!m) return;
+    // Map minutes to specific genre slugs that match real session times
+    let timeGenres = "";
+    let timeLabel = "";
+    if (m <= 20) {
+      timeGenres = "arcade,card-games,puzzle";
+      timeLabel = "Under 20 min";
+    } else if (m <= 40) {
+      timeGenres = "puzzle,arcade,fighting,racing,sports,card-games";
+      timeLabel = "20–40 min";
+    } else if (m <= 60) {
+      timeGenres = "platformer,indie,fighting,puzzle,shooter,sports,racing";
+      timeLabel = "40–60 min";
+    } else if (m <= 90) {
+      timeGenres = "action,indie,platformer,shooter,adventure";
+      timeLabel = "60–90 min";
+    } else if (m <= 120) {
+      timeGenres = "action,adventure,shooter,indie";
+      timeLabel = "1–2 hours";
+    } else {
+      timeGenres = "role-playing-games-rpg,strategy,simulation,adventure";
+      timeLabel = "2+ hours";
+    }
+    const cat = m <= 40 ? "short" : m <= 100 ? "medium" : "long";
+    const nf = { ...filters, time: cat };
+    setFilters(nf);
+    setPage(1);
+    // Fetch with exact genres + newest first (2026 down)
+    fetchGamesWithTime(timeGenres, nf, m);
   };
+
+  const fetchGamesWithTime = useCallback(async (timeGenres, f, minutes) => {
+    setLoading(true); setError("");
+    try {
+      const params = new URLSearchParams({
+        key: RAWG_KEY,
+        page_size: 20,
+        page: 1,
+        ordering: "-released", // newest first — 2026 going down
+        genres: timeGenres,
+      });
+      if (f.platform !== "all" && PLATFORM_MAP[f.platform]) params.set("platforms", PLATFORM_MAP[f.platform]);
+      const res = await fetch(`${RAWG_BASE}/games?${params}`);
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      let results = data.results || [];
+      // Sort by release date descending (2026 first)
+      results = results.sort((a, b) => {
+        const da = new Date(a.released || "2000-01-01");
+        const db = new Date(b.released || "2000-01-01");
+        return db - da;
+      });
+      setGames(results);
+      setTotal(data.count || 0);
+      setHasLoaded(true);
+    } catch { setError("Couldn't reach the game database. Check your RAWG API key."); }
+    setLoading(false);
+  }, []);
 
   if (!appReady) return <div style={{minHeight:"100vh",background:"#07070f",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",fontSize:12}}>Loading...</div></div>;
   if (!user) return <><link href="https://fonts.googleapis.com/css2?family=Bitter:wght@700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/><style>{`*{box-sizing:border-box}body{margin:0}input{color-scheme:dark}input::placeholder{color:rgba(255,255,255,0.22)}input:focus{outline:none;border-color:rgba(167,139,250,0.4)!important}`}</style><AuthScreen onLogin={handleLogin}/></>;
