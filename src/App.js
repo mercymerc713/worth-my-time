@@ -1132,7 +1132,7 @@ function GameModal({ game, onClose, currentUser }) {
             <ScoreRing value={scores.w} label="Worth It"      color={color} size={68}/>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
-            {[["⏱ Session",scores.hltb.session],["📖 Story",scores.hltb.main],["🏆 100%",scores.hltb.complete],["🎯 Difficulty",scores.difficulty],["⭐ Rating",game.rating?`${game.rating.toFixed(1)}/5`:"Unrated"],["📊 Metacritic",game.metacritic||"No score"],["🔞 Age",scores.esrb==="Not Rated"?"All ages":scores.esrb],["📅 Released",game.released?new Date(game.released).toLocaleDateString("en-US",{year:"numeric",month:"short"}):"Unknown"]].map(([k,v])=>(
+            {[["⏱ Session",scores.hltb.session],["📖 Story",scores.hltb.main],["🏆 100%",scores.hltb.complete],["🎯 Difficulty",scores.difficulty],["⭐ Rating",game.rating?`${game.rating.toFixed(1)}/5`:"Unrated"],["📊 Metacritic",game.metacritic||"No score"],["🔞 Age Rating", scores.esrb==="Not Rated"?"Unrated":scores.esrb==="Everyone"?"E — Everyone":scores.esrb==="Everyone 10+"?"E10+ — Everyone 10+":scores.esrb==="Teen"?"T — Teen (13+)":scores.esrb==="Mature"?"M — Mature (17+)":scores.esrb==="Adults Only"?"AO — Adults Only (18+)":scores.esrb==="Rating Pending"?"Rating Pending":scores.esrb],["📅 Released",game.released?new Date(game.released).toLocaleDateString("en-US",{year:"numeric",month:"short"}):"Unknown"]].map(([k,v])=>(
               <div key={k} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"9px 12px"}}>
                 <div style={{fontSize:9,color:"rgba(255,255,255,0.28)",fontFamily:"'Space Mono',monospace",marginBottom:3}}>{k}</div>
                 <div style={{fontSize:12,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{v}</div>
@@ -1253,6 +1253,7 @@ export default function App() {
       if (q) {
         p.set("search", q);
         p.set("search_precise", "true");
+        p.set("page_size", "40"); // get more results so exact match is in there
       }
       if (f.platform!=="all" && PLATFORM_MAP[f.platform]) p.set("platforms", PLATFORM_MAP[f.platform]);
       const gs=[];
@@ -1288,22 +1289,20 @@ export default function App() {
 
       if (q) {
         const ql = q.toLowerCase().trim();
-        results = [...results].sort((a, b) => {
-          const an = (a.name||"").toLowerCase();
-          const bn = (b.name||"").toLowerCase();
-          const aExact = an === ql;
-          const bExact = bn === ql;
-          const aStarts = an.startsWith(ql);
-          const bStarts = bn.startsWith(ql);
-          const aContains = an.includes(ql);
-          const bContains = bn.includes(ql);
-          if (aExact && !bExact) return -1;
-          if (!aExact && bExact) return 1;
-          if (aStarts && !bStarts) return -1;
-          if (!aStarts && bStarts) return 1;
-          if (aContains && !bContains) return -1;
-          if (!aContains && bContains) return 1;
+        const scoreMatch = (name) => {
+          const n = name.toLowerCase();
+          if (n === ql) return 100;                          // exact match
+          if (n.startsWith(ql)) return 80;                  // starts with
+          if (n.includes(` ${ql}`)) return 60;              // word boundary
+          if (n.includes(ql)) return 40;                    // contains
           return 0;
+        };
+        results = [...results].sort((a, b) => {
+          const as = scoreMatch(a.name || "");
+          const bs = scoreMatch(b.name || "");
+          if (as !== bs) return bs - as;                    // higher score first
+          // Tiebreak by ratings count — more popular games first
+          return (b.ratings_count || 0) - (a.ratings_count || 0);
         });
       }
       if (f.difficulty!=="all") results=results.filter(g=>{ const d=difficultyOf(g.genres||[]); return f.difficulty==="easy"?d==="Relaxed":f.difficulty==="hard"?d==="Challenging":d==="Medium"; });
@@ -1435,7 +1434,10 @@ export default function App() {
 
         {/* Search */}
         <div style={{maxWidth:540,margin:"0 auto 14px",padding:"0 16px"}}>
-          <Input placeholder="Search 500,000+ games..." value={search} onChange={e=>setSearch(e.target.value)} style={{padding:"12px 16px",fontSize:12,background:darkMode?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.05)",color:darkMode?"white":"#0f0f1a",border:`1px solid ${darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.15)"}`}}/>
+          <Input placeholder="Search 500,000+ games..." value={search}
+            onChange={e=>setSearch(e.target.value)}
+            onKeyDown={e=>{ if(e.key==="Enter"){ clearTimeout(debRef.current); setPage(1); fetchGames(e.target.value,filters,sortBy,1); }}}
+            style={{padding:"12px 16px",fontSize:12,background:darkMode?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.05)",color:darkMode?"white":"#0f0f1a",border:`1px solid ${darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.15)"}`}}/>
         </div>
 
         {/* Filter Toggle */}
