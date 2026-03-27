@@ -175,11 +175,41 @@ function storesOf(game) {
 // SMALL UI ATOMS
 // ─────────────────────────────────────────────────────────────────────────────
 const SCORE_TIPS = {
-  "Time":           "How easy is this game to play in short sessions? Higher = more busy-people friendly.",
-  "Adventure":      "Story depth, world exploration and overall experience. Higher = richer adventure.",
-  "Worth It":       "Is this game worth your limited free time? Based on ratings and player reviews.",
-  "Time Friendly":  "How easy is this game to play in short sessions? Higher = more busy-people friendly.",
+  "Time": [
+    { range: [0, 39],  color: "#f87171", msg: "⛔ Demands long sessions — not great for busy people. Plan for 2+ hours minimum." },
+    { range: [40, 59], color: "#fb923c", msg: "⚠️ Best played in longer sittings. Hard to feel progress in under an hour." },
+    { range: [60, 74], color: "#fbbf24", msg: "🕐 Playable in 45–90 min sessions. Good if you have a regular hour free." },
+    { range: [75, 89], color: "#4ade80", msg: "✅ Great for short sessions. You can pick it up, play 30–45 min, and feel satisfied." },
+    { range: [90, 99], color: "#34d399", msg: "🏆 Perfect for busy people. Jump in for 15–30 min anytime and always make progress." },
+  ],
+  "Adventure": [
+    { range: [0, 39],  color: "#f87171", msg: "⛔ Very little story or exploration. Mostly repetitive gameplay with no real world to discover." },
+    { range: [40, 59], color: "#fb923c", msg: "⚠️ Some depth but fairly surface level. Fine for quick fun, not for story lovers." },
+    { range: [60, 74], color: "#fbbf24", msg: "🕐 Decent story and world. You'll get some adventure but it won't blow your mind." },
+    { range: [75, 89], color: "#4ade80", msg: "✅ Rich story and real exploration. You'll care about the world and want to see what's next." },
+    { range: [90, 99], color: "#34d399", msg: "🏆 Deep, immersive adventure. Compelling story, worlds worth exploring, and lots to discover." },
+  ],
+  "Worth It": [
+    { range: [0, 39],  color: "#f87171", msg: "⛔ Not worth your time. Poor ratings, weak gameplay, or too short for the price." },
+    { range: [40, 59], color: "#fb923c", msg: "⚠️ Mixed bag. Has fans but also real problems. Read reviews before committing." },
+    { range: [60, 74], color: "#fbbf24", msg: "🕐 Decent value. Enjoyable but not exceptional. Good if it's on sale." },
+    { range: [75, 89], color: "#4ade80", msg: "✅ Solid buy. Consistently well-rated by players who felt their time was well spent." },
+    { range: [90, 99], color: "#34d399", msg: "🏆 A must-play. Players overwhelmingly say this game was worth every minute they invested." },
+  ],
+  "Time Friendly": [
+    { range: [0, 39],  color: "#f87171", msg: "⛔ Demands long sessions — not great for busy people. Plan for 2+ hours minimum." },
+    { range: [40, 59], color: "#fb923c", msg: "⚠️ Best played in longer sittings. Hard to feel progress in under an hour." },
+    { range: [60, 74], color: "#fbbf24", msg: "🕐 Playable in 45–90 min sessions. Good if you have a regular hour free." },
+    { range: [75, 89], color: "#4ade80", msg: "✅ Great for short sessions. You can pick it up, play 30–45 min, and feel satisfied." },
+    { range: [90, 99], color: "#34d399", msg: "🏆 Perfect for busy people. Jump in for 15–30 min anytime and always make progress." },
+  ],
 };
+
+function getScoreTip(label, value) {
+  const tips = SCORE_TIPS[label];
+  if (!tips) return null;
+  return tips.find(t => value >= t.range[0] && value <= t.range[1]) || tips[tips.length - 1];
+}
 
 function ScoreRing({ value, color, label, size=64 }) {
   const [showTip, setShowTip] = useState(false);
@@ -187,15 +217,35 @@ function ScoreRing({ value, color, label, size=64 }) {
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,cursor:"help",position:"relative"}}
       onMouseEnter={()=>setShowTip(true)} onMouseLeave={()=>setShowTip(false)}>
-      {showTip && SCORE_TIPS[label] && (
-        <div style={{position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",
-          background:"#1a1a2e",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,
-          padding:"6px 10px",fontSize:10,color:"rgba(255,255,255,0.85)",fontFamily:"'Space Mono',monospace",
-          whiteSpace:"nowrap",zIndex:999,boxShadow:"0 4px 20px rgba(0,0,0,0.5)",
-          maxWidth:180,whiteSpace:"normal",textAlign:"center",lineHeight:1.5}}>
-          {SCORE_TIPS[label]}
-        </div>
-      )}
+      {showTip && SCORE_TIPS[label] && (() => {
+        const tip = getScoreTip(label, value);
+        return tip ? (
+          <div style={{position:"absolute",bottom:"calc(100% + 8px)",left:"50%",transform:"translateX(-50%)",
+            background:"#0d0d18",border:`1px solid ${tip.color}50`,borderRadius:10,
+            padding:"10px 14px",zIndex:999,boxShadow:`0 8px 30px rgba(0,0,0,0.7)`,
+            width:220,pointerEvents:"none"}}>
+            {/* Score display */}
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+              <div style={{fontSize:22,fontWeight:900,color:tip.color,fontFamily:"'Space Mono',monospace"}}>{value}</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace",letterSpacing:1}}>{label.toUpperCase()}</div>
+                {/* Score bar */}
+                <div style={{height:4,background:"rgba(255,255,255,0.08)",borderRadius:2,marginTop:3}}>
+                  <div style={{height:"100%",width:`${value}%`,background:tip.color,borderRadius:2,transition:"width .3s"}}/>
+                </div>
+              </div>
+            </div>
+            {/* Message */}
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.8)",fontFamily:"'Space Mono',monospace",lineHeight:1.6}}>
+              {tip.msg}
+            </div>
+            {/* Triangle pointer */}
+            <div style={{position:"absolute",top:"100%",left:"50%",transform:"translateX(-50%)",
+              width:0,height:0,borderLeft:"6px solid transparent",
+              borderRight:"6px solid transparent",borderTop:`6px solid ${tip.color}50`}}/>
+          </div>
+        ) : null;
+      })()}
       <svg width={size} height={size} style={{transform:"rotate(-90deg)"}}>
         <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={5}/>
         <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={5}
