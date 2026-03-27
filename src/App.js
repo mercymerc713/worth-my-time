@@ -84,6 +84,188 @@ function hasFullAccess(user) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// COMMUNITY REVIEWS
+// ─────────────────────────────────────────────────────────────────────────────
+function getReviewKey(gameId) { return `wmt_reviews_${gameId}`; }
+
+async function loadReviews(gameId) {
+  try {
+    const data = localStorage.getItem(getReviewKey(gameId));
+    return data ? JSON.parse(data) : [];
+  } catch { return []; }
+}
+
+async function saveReview(gameId, review) {
+  try {
+    const reviews = await loadReviews(gameId);
+    const existing = reviews.findIndex(r => r.userEmail === review.userEmail);
+    if (existing >= 0) reviews[existing] = review;
+    else reviews.unshift(review);
+    localStorage.setItem(getReviewKey(gameId), JSON.stringify(reviews));
+    return reviews;
+  } catch { return []; }
+}
+
+function StarPicker({ value, onChange, readonly=false }) {
+  const [hov, setHov] = useState(0);
+  return (
+    <div style={{display:"flex",gap:2}}>
+      {[1,2,3,4,5].map(s=>(
+        <span key={s}
+          onClick={()=>!readonly&&onChange&&onChange(s)}
+          onMouseEnter={()=>!readonly&&setHov(s)}
+          onMouseLeave={()=>!readonly&&setHov(0)}
+          style={{fontSize:readonly?14:18,cursor:readonly?"default":"pointer",
+            color:s<=(hov||value)?"#fbbf24":"rgba(255,255,255,0.15)",
+            transition:"color .15s"}}>★</span>
+      ))}
+    </div>
+  );
+}
+
+function CommunityReviews({ game, currentUser }) {
+  const [reviews, setReviews] = useState([]);
+  const [myRating, setMyRating] = useState(0);
+  const [myReview, setMyReview] = useState("");
+  const [myTime, setMyTime] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+
+  useEffect(() => {
+    loadReviews(game.id).then(r => {
+      setReviews(r);
+      if (currentUser) {
+        const mine = r.find(rv => rv.userEmail === currentUser.email);
+        if (mine) { setMyRating(mine.rating); setMyReview(mine.text); setMyTime(mine.timeSpent||""); }
+      }
+    });
+  }, [game.id]);
+
+  const handleSubmit = async () => {
+    if (!currentUser) return;
+    if (!myRating) return;
+    setSubmitting(true);
+    const review = {
+      userEmail: currentUser.email,
+      userName: currentUser.name,
+      rating: myRating,
+      text: myReview.trim(),
+      timeSpent: myTime,
+      date: new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}),
+    };
+    const updated = await saveReview(game.id, review);
+    setReviews(updated);
+    setSubmitting(false);
+    setSubmitted(true);
+    setShowForm(false);
+    setTimeout(()=>setSubmitted(false), 3000);
+  };
+
+  const avgRating = reviews.length ? (reviews.reduce((s,r)=>s+r.rating,0)/reviews.length).toFixed(1) : null;
+
+  return (
+    <div style={{marginTop:16}}>
+      <div style={{fontSize:9,color:"rgba(255,255,255,0.28)",fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:10}}>
+        💬 COMMUNITY REVIEWS {reviews.length>0&&`(${reviews.length})`}
+      </div>
+
+      {/* Avg rating summary */}
+      {avgRating && (
+        <div style={{display:"flex",alignItems:"center",gap:12,background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+          <div style={{fontSize:28,fontWeight:900,color:"#fbbf24",fontFamily:"'Space Mono',monospace"}}>{avgRating}</div>
+          <div>
+            <StarPicker value={Math.round(avgRating)} readonly/>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",marginTop:2}}>{reviews.length} player review{reviews.length!==1?"s":""}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Write review button */}
+      {currentUser && !showForm && (
+        <button onClick={()=>setShowForm(true)}
+          style={{width:"100%",background:"rgba(167,139,250,0.1)",border:"1px solid rgba(167,139,250,0.3)",
+            borderRadius:10,padding:"9px",color:"#a78bfa",fontSize:11,cursor:"pointer",
+            fontFamily:"'Space Mono',monospace",marginBottom:12,transition:"all .2s"}}
+          onMouseEnter={e=>e.currentTarget.style.background="rgba(167,139,250,0.2)"}
+          onMouseLeave={e=>e.currentTarget.style.background="rgba(167,139,250,0.1)"}>
+          ✍️ {reviews.find(r=>r.userEmail===currentUser.email) ? "Edit My Review" : "Write a Review"}
+        </button>
+      )}
+
+      {/* Review form */}
+      {currentUser && showForm && (
+        <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:14,marginBottom:14}}>
+          <div style={{fontSize:11,color:"white",fontFamily:"'Space Mono',monospace",fontWeight:700,marginBottom:10}}>Your Review</div>
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:9,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",marginBottom:6}}>YOUR RATING</div>
+            <StarPicker value={myRating} onChange={setMyRating}/>
+          </div>
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:9,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",marginBottom:6}}>HOW LONG DID YOU PLAY?</div>
+            <input placeholder="e.g. 12 hours, weekends only, still playing..." value={myTime}
+              onChange={e=>setMyTime(e.target.value)}
+              style={{width:"100%",background:"rgba(0,0,0,0.4)",border:"1px solid rgba(255,255,255,0.1)",
+                borderRadius:8,padding:"8px 10px",color:"white",fontSize:11,
+                fontFamily:"'Space Mono',monospace",boxSizing:"border-box"}}/>
+          </div>
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:9,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",marginBottom:6}}>YOUR THOUGHTS</div>
+            <textarea placeholder="Was it worth your time? Would you recommend it to a busy person?" value={myReview}
+              onChange={e=>setMyReview(e.target.value)}
+              style={{width:"100%",background:"rgba(0,0,0,0.4)",border:"1px solid rgba(255,255,255,0.1)",
+                borderRadius:8,padding:"8px 10px",color:"white",fontSize:11,resize:"vertical",
+                minHeight:70,fontFamily:"'Space Mono',monospace",boxSizing:"border-box"}}/>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={handleSubmit} disabled={!myRating||submitting}
+              style={{flex:1,background:myRating?"#a78bfa":"rgba(255,255,255,0.1)",border:"none",
+                borderRadius:9,padding:"9px",color:"white",fontSize:11,fontWeight:700,
+                cursor:myRating?"pointer":"not-allowed",fontFamily:"'Space Mono',monospace"}}>
+              {submitting?"Saving...":submitted?"✓ Saved!":"Submit Review"}
+            </button>
+            <button onClick={()=>setShowForm(false)}
+              style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",
+                borderRadius:9,padding:"9px 14px",color:"rgba(255,255,255,0.4)",fontSize:11,
+                cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Reviews list */}
+      {reviews.length === 0 && (
+        <div style={{textAlign:"center",padding:"16px 0",color:"rgba(255,255,255,0.25)",fontSize:11,fontFamily:"'Space Mono',monospace"}}>
+          No reviews yet. Be the first to share your experience!
+        </div>
+      )}
+      <div style={{display:"flex",flexDirection:"column",gap:10,maxHeight:280,overflowY:"auto"}}>
+        {reviews.map((r,i)=>(
+          <div key={i} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,padding:"10px 12px"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{width:26,height:26,borderRadius:"50%",
+                  background:`hsl(${r.userName?.charCodeAt(0)*7%360},60%,45%)`,
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:11,fontWeight:700,color:"white",fontFamily:"'Space Mono',monospace",flexShrink:0}}>
+                  {r.userName?.[0]?.toUpperCase()||"?"}
+                </div>
+                <div>
+                  <div style={{fontSize:11,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{r.userName}</div>
+                  <div style={{fontSize:9,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace"}}>{r.date}</div>
+                </div>
+              </div>
+              <StarPicker value={r.rating} readonly/>
+            </div>
+            {r.timeSpent && <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace",marginBottom:4}}>⏱ {r.timeSpent}</div>}
+            {r.text && <div style={{fontSize:11,color:"rgba(255,255,255,0.7)",fontFamily:"'Space Mono',monospace",lineHeight:1.6}}>{r.text}</div>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GAME DATA HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 const HLTB = {
@@ -161,14 +343,42 @@ function computeScores(game) {
 }
 
 function storesOf(game) {
-  const n = encodeURIComponent(game.name||"");
-  return [
-    { name:"Steam",     url:`https://store.steampowered.com/search/?term=${n}`,      icon:"🖥" },
-    { name:"Epic",      url:`https://store.epicgames.com/en-US/browse?q=${n}`,       icon:"⚡" },
-    { name:"GOG",       url:`https://www.gog.com/games?search=${n}`,                 icon:"🌍" },
-    { name:"PSN",       url:`https://store.playstation.com/en-us/search/${n}`,       icon:"🎮" },
-    { name:"Xbox",      url:`https://www.xbox.com/en-US/Search/Results?q=${n}`,      icon:"⬜" },
-  ];
+  const n = encodeURIComponent(game.name || "");
+  const platforms = (game.platforms || []).map(p => p.platform?.slug || p.platform?.name?.toLowerCase() || "");
+  const stores = (game.stores || []).map(s => s.store?.slug || "");
+
+  const isPC        = platforms.some(p => ["pc","windows","linux","macos","mac"].includes(p));
+  const isPS        = platforms.some(p => ["playstation4","playstation5","playstation3","ps4","ps5","ps3","playstation"].some(x => p.includes(x)));
+  const isXbox      = platforms.some(p => ["xbox","xbox-one","xbox360","xbox-series-x"].some(x => p.includes(x)));
+  const isNintendo  = platforms.some(p => ["nintendo","switch","wii","nintendo-switch"].some(x => p.includes(x)));
+  const isMobile    = platforms.some(p => ["ios","android","mobile"].some(x => p.includes(x)));
+  const hasSteam    = stores.includes("steam") || isPC;
+  const hasEpic     = stores.includes("epic-games") || isPC;
+  const hasGOG      = stores.includes("gog") || isPC;
+  const hasPS       = stores.includes("playstation-store") || isPS;
+  const hasXbox     = stores.includes("xbox360") || stores.includes("xbox-store") || stores.includes("microsoft-store") || isXbox;
+  const hasNintendo = stores.includes("nintendo") || isNintendo;
+  const hasMobile   = stores.includes("google-play") || stores.includes("apple-itunes") || isMobile;
+
+  const result = [];
+  if (hasSteam)    result.push({ name:"Steam",          url:`https://store.steampowered.com/search/?term=${n}`,                 icon:"🖥",  color:"#1b2838" });
+  if (hasEpic)     result.push({ name:"Epic Games",     url:`https://store.epicgames.com/en-US/browse?q=${n}`,                  icon:"⚡",  color:"#2a2a2a" });
+  if (hasGOG)      result.push({ name:"GOG",            url:`https://www.gog.com/games?search=${n}`,                            icon:"🌍",  color:"#7b2fbe" });
+  if (hasPS)       result.push({ name:"PlayStation",    url:`https://store.playstation.com/en-us/search/${n}`,                  icon:"🎮",  color:"#003087" });
+  if (hasXbox)     result.push({ name:"Xbox",           url:`https://www.xbox.com/en-US/Search/Results?q=${n}`,                 icon:"🟢",  color:"#107c10" });
+  if (hasNintendo) result.push({ name:"Nintendo",       url:`https://www.nintendo.com/search/#q=${n}&p=1&cat=gme&sort=df`,      icon:"🔴",  color:"#e4000f" });
+  if (hasMobile)   result.push({ name:"Mobile",         url:`https://play.google.com/store/search?q=${n}&c=apps`,               icon:"📱",  color:"#01875f" });
+
+  // Fallback — if we can't detect, show all stores
+  if (result.length === 0) {
+    return [
+      { name:"Steam",       url:`https://store.steampowered.com/search/?term=${n}`, icon:"🖥",  color:"#1b2838" },
+      { name:"Epic Games",  url:`https://store.epicgames.com/en-US/browse?q=${n}`,  icon:"⚡",  color:"#2a2a2a" },
+      { name:"PlayStation", url:`https://store.playstation.com/en-us/search/${n}`,  icon:"🎮",  color:"#003087" },
+      { name:"Xbox",        url:`https://www.xbox.com/en-US/Search/Results?q=${n}`, icon:"🟢",  color:"#107c10" },
+    ];
+  }
+  return result;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -823,7 +1033,7 @@ function GameCard({ game, onClick, locked }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // MODAL
 // ─────────────────────────────────────────────────────────────────────────────
-function GameModal({ game, onClose }) {
+function GameModal({ game, onClose, currentUser }) {
   if (!game) return null;
   let scores, color, stores;
   try {
@@ -869,15 +1079,24 @@ function GameModal({ game, onClose }) {
               </div>
             </div>
           )}
+          <CommunityReviews game={game} currentUser={currentUser}/>
+
           <div>
-            <div style={{fontSize:9,color:"rgba(255,255,255,0.28)",fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:7}}>BUY / FIND THIS GAME</div>
+            <div style={{fontSize:9,color:"rgba(255,255,255,0.28)",fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:7}}>
+              BUY / FIND THIS GAME
+              <span style={{color:"rgba(255,255,255,0.2)",marginLeft:6}}>— only showing stores for detected platforms</span>
+            </div>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               {stores.map(s=>(
                 <a key={s.name} href={s.url} target="_blank" rel="noopener noreferrer"
-                  style={{background:`${color}12`,border:`1px solid ${color}35`,borderRadius:10,padding:"8px 12px",textAlign:"center",color:"white",textDecoration:"none",fontSize:11,fontFamily:"'Space Mono',monospace",flex:"1 0 auto",transition:"background .2s"}}
-                  onMouseEnter={e=>e.currentTarget.style.background=`${color}28`}
-                  onMouseLeave={e=>e.currentTarget.style.background=`${color}12`}>
-                  {s.icon} {s.name}
+                  style={{background:s.color+"22",border:`1px solid ${s.color}60`,borderRadius:10,
+                    padding:"9px 13px",textAlign:"center",color:"white",textDecoration:"none",
+                    fontSize:11,fontFamily:"'Space Mono',monospace",flex:"1 0 auto",
+                    transition:"all .2s",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}
+                  onMouseEnter={e=>{e.currentTarget.style.background=s.color+"44";e.currentTarget.style.transform="translateY(-1px)";}}
+                  onMouseLeave={e=>{e.currentTarget.style.background=s.color+"22";e.currentTarget.style.transform="translateY(0)";}}>
+                  <span style={{fontSize:14}}>{s.icon}</span>
+                  <span>{s.name}</span>
                 </a>
               ))}
             </div>
@@ -1261,7 +1480,7 @@ export default function App() {
       {/* Modals */}
       {status==="expired" && !showPaywall && games.length===0 && hasLoaded && <LockedOverlay onUpgrade={()=>setShowPaywall(true)}/>}
       {showPaywall && <PaywallModal user={user} onClose={()=>setShowPaywall(false)} onSuccess={handlePaid}/>}
-      <GameModal game={selected} onClose={()=>setSelected(null)}/>
+      <GameModal game={selected} onClose={()=>setSelected(null)} currentUser={user}/>
     </>
   );
 }
