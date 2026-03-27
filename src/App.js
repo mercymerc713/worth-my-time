@@ -1941,34 +1941,28 @@ export default function App() {
 
   const handleTimeSearch = () => {
     const m = parseInt(minutes); if (!m) return;
-    // Map minutes to specific genre slugs that match real session times
     let timeGenres = "";
-    let timeLabel = "";
-    if (m <= 20) {
-      timeGenres = "arcade,card-games,puzzle";
-      timeLabel = "Under 20 min";
-    } else if (m <= 40) {
-      timeGenres = "puzzle,arcade,fighting,racing,sports,card-games";
-      timeLabel = "20–40 min";
-    } else if (m <= 60) {
-      timeGenres = "platformer,indie,fighting,puzzle,shooter,sports,racing";
-      timeLabel = "40–60 min";
-    } else if (m <= 90) {
-      timeGenres = "action,indie,platformer,shooter,adventure";
-      timeLabel = "60–90 min";
-    } else if (m <= 120) {
-      timeGenres = "action,adventure,shooter,indie";
-      timeLabel = "1–2 hours";
-    } else {
-      timeGenres = "role-playing-games-rpg,strategy,simulation,adventure";
-      timeLabel = "2+ hours";
-    }
-    const cat = m <= 40 ? "short" : m <= 100 ? "medium" : "long";
-    const nf = { ...filters, time: cat };
-    setFilters(nf);
+    if (m <= 20)       timeGenres = "arcade,card-games,puzzle";
+    else if (m <= 40)  timeGenres = "puzzle,arcade,fighting,racing,sports,card-games";
+    else if (m <= 60)  timeGenres = "platformer,indie,fighting,puzzle,shooter,sports,racing";
+    else if (m <= 90)  timeGenres = "action,indie,platformer,shooter,adventure";
+    else if (m <= 120) timeGenres = "action,adventure,shooter,indie";
+    else               timeGenres = "role-playing-games-rpg,strategy,simulation,adventure";
+
+    // Clear search and reset page — time search is its own clean mode
+    setSearch("");
     setPage(1);
-    // Fetch with exact genres + newest first (2026 down)
-    fetchGamesWithTime(timeGenres, nf, m);
+    setFilters(DEFAULT_FILTERS); // reset all filters so nothing interferes
+    fetchGamesWithTime(timeGenres);
+  };
+
+  // Clear time search and go back to main browse
+  const handleClearTimeSearch = () => {
+    setMinutes("");
+    setSearch("");
+    setPage(1);
+    setGames([]);
+    setHasLoaded(false); // goes back to landing screen
   };
 
   const fetchGamesWithTime = useCallback(async (timeGenres, f, minutes) => {
