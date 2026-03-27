@@ -1,251 +1,459 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CONFIG
+// ─────────────────────────────────────────────────────────────────────────────
 const RAWG_KEY = "4d7a97bce7df4cfc94e9981345756746";
 const RAWG_BASE = "https://api.rawg.io/api";
+const TRIAL_DAYS = 7;
+const PRICE = "$7.99";
 
-const HLTB_GENRE_TIMES = {
-  "Action": { main: "12h", complete: "25h", session: "45–90 min" },
-  "RPG": { main: "40h", complete: "100h", session: "60–120 min" },
-  "Adventure": { main: "15h", complete: "30h", session: "45–90 min" },
-  "Strategy": { main: "20h", complete: "60h", session: "60–120 min" },
-  "Shooter": { main: "8h", complete: "20h", session: "30–60 min" },
-  "Puzzle": { main: "6h", complete: "12h", session: "15–45 min" },
-  "Platformer": { main: "8h", complete: "18h", session: "30–60 min" },
-  "Sports": { main: "∞", complete: "∞", session: "20–45 min" },
-  "Racing": { main: "10h", complete: "30h", session: "20–40 min" },
-  "Indie": { main: "8h", complete: "15h", session: "30–60 min" },
-  "Simulation": { main: "∞", complete: "∞", session: "60–120 min" },
-  "Arcade": { main: "∞", complete: "∞", session: "10–30 min" },
-  "Fighting": { main: "5h", complete: "20h", session: "15–45 min" },
-  "Card": { main: "∞", complete: "∞", session: "15–30 min" },
-  "default": { main: "10h", complete: "25h", session: "30–60 min" },
+// ─────────────────────────────────────────────────────────────────────────────
+// STORAGE HELPERS (persistent across sessions)
+// ─────────────────────────────────────────────────────────────────────────────
+const store = {
+  async get(key) {
+    try { const r = await window.storage.get(key); return r ? JSON.parse(r.value) : null; } catch { return null; }
+  },
+  async set(key, val) {
+    try { await window.storage.set(key, JSON.stringify(val)); } catch {}
+  },
+  async del(key) {
+    try { await window.storage.delete(key); } catch {}
+  },
 };
 
-// ── Genre → RAWG slug map ──────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ACCOUNT HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+function createUser(name, email) {
+  const now = Date.now();
+  return {
+    name,
+    email,
+    joinedAt: now,
+    trialStartAt: now,
+    trialEndsAt: now + TRIAL_DAYS * 24 * 60 * 60 * 1000,
+    isPaid: false,
+    paidAt: null,
+  };
+}
+
+function getAccountStatus(user) {
+  if (!user) return "guest";
+  if (user.isPaid) return "paid";
+  if (Date.now() < user.trialEndsAt) return "trial";
+  return "expired";
+}
+
+function getTrialDaysLeft(user) {
+  if (!user) return 0;
+  const ms = user.trialEndsAt - Date.now();
+  return Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
+}
+
+function hasFullAccess(user) {
+  const s = getAccountStatus(user);
+  return s === "paid" || s === "trial";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GAME DATA HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+const HLTB = {
+  "Action":     { main:"12h", complete:"25h", session:"45–90 min" },
+  "RPG":        { main:"40h", complete:"100h", session:"60–120 min" },
+  "Adventure":  { main:"15h", complete:"30h", session:"45–90 min" },
+  "Strategy":   { main:"20h", complete:"60h", session:"60–120 min" },
+  "Shooter":    { main:"8h",  complete:"20h", session:"30–60 min" },
+  "Puzzle":     { main:"6h",  complete:"12h", session:"15–45 min" },
+  "Platformer": { main:"8h",  complete:"18h", session:"30–60 min" },
+  "Sports":     { main:"∞",   complete:"∞",   session:"20–45 min" },
+  "Racing":     { main:"10h", complete:"30h", session:"20–40 min" },
+  "Indie":      { main:"8h",  complete:"15h", session:"30–60 min" },
+  "Simulation": { main:"∞",   complete:"∞",   session:"60–120 min" },
+  "Arcade":     { main:"∞",   complete:"∞",   session:"10–30 min" },
+  "Fighting":   { main:"5h",  complete:"20h", session:"15–45 min" },
+  "default":    { main:"10h", complete:"25h", session:"30–60 min" },
+};
+
 const GENRE_MAP = {
-  "Action":      "action",
-  "Adventure":   "adventure",
-  "RPG":         "role-playing-games-rpg",
-  "Shooter":     "shooter",
-  "Strategy":    "strategy",
-  "Puzzle":      "puzzle",
-  "Platformer":  "platformer",
-  "Sports":      "sports",
-  "Racing":      "racing",
-  "Indie":       "indie",
-  "Simulation":  "simulation",
-  "Fighting":    "fighting",
-  "Arcade":      "arcade",
-  "Family":      "family",
+  "Action":"action","Adventure":"adventure","RPG":"role-playing-games-rpg",
+  "Shooter":"shooter","Strategy":"strategy","Puzzle":"puzzle","Platformer":"platformer",
+  "Sports":"sports","Racing":"racing","Indie":"indie","Simulation":"simulation",
+  "Fighting":"fighting","Arcade":"arcade","Family":"family",
 };
 
-// ── Difficulty inferred from genres ───────────────────────────────────────
-function inferDifficulty(genres = []) {
-  const names = genres.map(g => g.name);
-  const hard = ["Shooter", "Fighting", "Strategy", "Platformer"];
-  const easy = ["Puzzle", "Simulation", "Card", "Sports", "Family"];
-  if (hard.some(g => names.includes(g))) return "Challenging";
-  if (easy.some(g => names.includes(g))) return "Relaxed";
+const ACCENT = {
+  "RPG":"#c084fc","Action":"#f87171","Adventure":"#34d399","Shooter":"#fb923c",
+  "Strategy":"#60a5fa","Puzzle":"#fbbf24","Platformer":"#4ade80","Indie":"#a78bfa",
+  "Sports":"#38bdf8","Racing":"#f97316","Simulation":"#86efac","Fighting":"#ef4444",
+  "Arcade":"#facc15","default":"#94a3b8",
+};
+
+function accentOf(genres=[]) { return ACCENT[genres[0]?.name] || ACCENT.default; }
+function hltbOf(genres=[])   { return HLTB[genres[0]?.name]   || HLTB.default; }
+
+function difficultyOf(genres=[]) {
+  const n = genres.map(g=>g.name);
+  if (["Shooter","Fighting","Strategy","Platformer"].some(x=>n.includes(x))) return "Challenging";
+  if (["Puzzle","Simulation","Sports","Family"].some(x=>n.includes(x)))      return "Relaxed";
   return "Medium";
 }
 
-// ── Multiplayer tag check ──────────────────────────────────────────────────
-function getMultiplayerType(game) {
-  const tags = (game.tags || []).map(t => t.slug);
-  if (tags.includes("co-op") || tags.includes("local-co-op") || tags.includes("online-co-op")) return "co-op";
-  if (tags.includes("multiplayer") || tags.includes("online-multiplayer")) return "multiplayer";
-  if (tags.includes("singleplayer")) return "singleplayer";
-  return "unknown";
-}
-
-// ── Price tier inferred from release year + rating ────────────────────────
-function getPriceTier(game) {
-  const year = parseInt((game.released || "2000").split("-")[0]);
-  const rating = game.rating || 3;
-  if (year < 2015 || rating < 2.5) return "free-budget"; // likely cheap/free
-  if (year >= 2022 && rating > 3.5) return "full-price";  // likely $60+
-  return "mid";
-}
-
-function computeScores(game) {
-  const rating = game.rating || 3;
-  const ratingCount = game.ratings_count || 0;
-  const metacritic = game.metacritic || 0;
-  const genres = (game.genres || []).map(g => g.name);
-  const primaryGenre = genres[0] || "default";
-  const hltb = HLTB_GENRE_TIMES[primaryGenre] || HLTB_GENRE_TIMES["default"];
-
-  const shortFriendly = ["Puzzle", "Arcade", "Card", "Fighting", "Racing", "Sports"];
-  const longForm = ["RPG", "Strategy", "Simulation"];
-  let timeScore = 70;
-  if (shortFriendly.some(g => genres.includes(g))) timeScore = Math.min(99, timeScore + 22);
-  if (longForm.some(g => genres.includes(g))) timeScore = Math.max(30, timeScore - 25);
-  if (genres.includes("Indie")) timeScore = Math.min(99, timeScore + 8);
-  timeScore = Math.round(timeScore + (Math.random() * 6 - 3));
-
-  const deepAdventure = ["RPG", "Adventure", "Action"];
-  let advScore = 55;
-  if (deepAdventure.some(g => genres.includes(g))) advScore += 30;
-  if (genres.includes("Indie")) advScore += 10;
-  if (metacritic > 80) advScore += 10;
-  advScore = Math.min(99, Math.round(advScore + (Math.random() * 8 - 4)));
-
-  let worthScore = Math.round((rating / 5) * 60 + 30);
-  if (metacritic > 85) worthScore = Math.min(99, worthScore + 10);
-  if (ratingCount > 1000) worthScore = Math.min(99, worthScore + 5);
-  worthScore = Math.round(worthScore + (Math.random() * 6 - 3));
-
-  const difficulty = inferDifficulty(game.genres);
-  const esrb = game.esrb_rating?.name || "Not Rated";
-  return { timeScore, advScore, worthScore, difficulty, hltb, esrb };
-}
-
-function getSessionCategory(genres = []) {
-  const names = genres.map(g => g.name);
-  if (["Puzzle","Arcade","Card","Fighting","Racing","Sports"].some(g => names.includes(g))) return "short";
-  if (["RPG","Strategy","Simulation"].some(g => names.includes(g))) return "long";
+function sessionCatOf(genres=[]) {
+  const n = genres.map(g=>g.name);
+  if (["Puzzle","Arcade","Card","Fighting","Racing","Sports"].some(x=>n.includes(x))) return "short";
+  if (["RPG","Strategy","Simulation"].some(x=>n.includes(x))) return "long";
   return "medium";
 }
 
-function getAccentColor(genres = []) {
-  const g = genres[0]?.name || "";
-  const map = {
-    "RPG":"#c084fc","Action":"#f87171","Adventure":"#34d399","Shooter":"#fb923c",
-    "Strategy":"#60a5fa","Puzzle":"#fbbf24","Platformer":"#4ade80","Indie":"#a78bfa",
-    "Sports":"#38bdf8","Racing":"#f97316","Simulation":"#86efac","Fighting":"#ef4444",
-    "Arcade":"#facc15","Card":"#e879f9","Family":"#f9a8d4",
-  };
-  return map[g] || "#94a3b8";
+function computeScores(game) {
+  const rating = game.rating||3, mc = game.metacritic||0, rc = game.ratings_count||0;
+  const genres = game.genres||[];
+  const names  = genres.map(g=>g.name);
+  const hltb   = hltbOf(genres);
+  const shortF = ["Puzzle","Arcade","Card","Fighting","Racing","Sports"];
+  const longF  = ["RPG","Strategy","Simulation"];
+  let t=70;
+  if (shortF.some(g=>names.includes(g))) t=Math.min(99,t+22);
+  if (longF.some(g=>names.includes(g)))  t=Math.max(30,t-25);
+  if (names.includes("Indie")) t=Math.min(99,t+8);
+  t=Math.round(t+(Math.random()*6-3));
+  let a=55;
+  if (["RPG","Adventure","Action"].some(g=>names.includes(g))) a+=30;
+  if (names.includes("Indie")) a+=10;
+  if (mc>80) a+=10;
+  a=Math.min(99,Math.round(a+(Math.random()*8-4)));
+  let w=Math.round((rating/5)*60+30);
+  if (mc>85) w=Math.min(99,w+10);
+  if (rc>1000) w=Math.min(99,w+5);
+  w=Math.round(w+(Math.random()*6-3));
+  return { t, a, w, hltb, difficulty:difficultyOf(genres), esrb:game.esrb_rating?.name||"Not Rated" };
 }
 
-function getStoreLinks(game) {
-  const name = encodeURIComponent(game.name || "");
+function storesOf(game) {
+  const n = encodeURIComponent(game.name||"");
   return [
-    { name: "Steam",       url: `https://store.steampowered.com/search/?term=${name}`,                    icon: "🖥" },
-    { name: "Epic",        url: `https://store.epicgames.com/en-US/browse?q=${name}`,                     icon: "⚡" },
-    { name: "GOG",         url: `https://www.gog.com/games?search=${name}`,                               icon: "🌍" },
-    { name: "PSN",         url: `https://store.playstation.com/en-us/search/${name}`,                     icon: "🎮" },
-    { name: "Xbox",        url: `https://www.xbox.com/en-US/Search/Results?q=${name}`,                    icon: "⬜" },
+    { name:"Steam",     url:`https://store.steampowered.com/search/?term=${n}`,      icon:"🖥" },
+    { name:"Epic",      url:`https://store.epicgames.com/en-US/browse?q=${n}`,       icon:"⚡" },
+    { name:"GOG",       url:`https://www.gog.com/games?search=${n}`,                 icon:"🌍" },
+    { name:"PSN",       url:`https://store.playstation.com/en-us/search/${n}`,       icon:"🎮" },
+    { name:"Xbox",      url:`https://www.xbox.com/en-US/Search/Results?q=${n}`,      icon:"⬜" },
   ];
 }
 
-// ── Filter pill component ──────────────────────────────────────────────────
-function Pill({ label, active, color = "white", onClick }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// SMALL UI ATOMS
+// ─────────────────────────────────────────────────────────────────────────────
+function ScoreRing({ value, color, label, size=64 }) {
+  const r=size*.38, c=2*Math.PI*r, off=c-(Math.min(value,99)/100)*c, cx=size/2, cy=size/2;
   return (
-    <button onClick={onClick} style={{
-      background: active ? (color === "white" ? "white" : color + "25") : "rgba(255,255,255,0.05)",
-      color: active ? (color === "white" ? "#080810" : color) : "rgba(255,255,255,0.45)",
-      border: `1px solid ${active ? (color === "white" ? "white" : color + "70") : "rgba(255,255,255,0.1)"}`,
-      borderRadius: 100, padding: "6px 13px", cursor: "pointer", fontSize: 11,
-      fontFamily: "'Space Mono', monospace", transition: "all 0.2s",
-      fontWeight: active ? 700 : 400, whiteSpace: "nowrap",
-    }}>{label}</button>
-  );
-}
-
-// ── Filter section label ───────────────────────────────────────────────────
-function FilterLabel({ children }) {
-  return <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", fontFamily: "'Space Mono', monospace", letterSpacing: 1.5, marginBottom: 6, marginTop: 4 }}>{children}</div>;
-}
-
-// ── Score Ring ─────────────────────────────────────────────────────────────
-function ScoreRing({ value, label, color, size = 64 }) {
-  const r = size * 0.38, circ = 2 * Math.PI * r;
-  const offset = circ - (Math.min(value, 99) / 100) * circ;
-  const cx = size / 2, cy = size / 2;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={5} />
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+      <svg width={size} height={size} style={{transform:"rotate(-90deg)"}}>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={5}/>
         <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={5}
-          strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
-          style={{ transition: "stroke-dashoffset 0.9s cubic-bezier(.4,0,.2,1)" }} />
+          strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round"
+          style={{transition:"stroke-dashoffset .9s cubic-bezier(.4,0,.2,1)"}}/>
         <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fill="white"
-          fontSize={size * 0.2} fontWeight="700"
-          style={{ transform: `rotate(90deg)`, transformOrigin: `${cx}px ${cy}px`, fontFamily: "'Space Mono', monospace" }}>
+          fontSize={size*.2} fontWeight="700"
+          style={{transform:`rotate(90deg)`,transformOrigin:`${cx}px ${cy}px`,fontFamily:"'Space Mono',monospace"}}>
           {value}
         </text>
       </svg>
-      <span style={{ fontSize: 9, color: "rgba(255,255,255,0.38)", letterSpacing: 1.2, textTransform: "uppercase", fontFamily: "'Space Mono', monospace" }}>{label}</span>
+      <span style={{fontSize:9,color:"rgba(255,255,255,0.35)",letterSpacing:1.2,textTransform:"uppercase",fontFamily:"'Space Mono',monospace"}}>{label}</span>
     </div>
   );
 }
 
-// ── Multiplayer badge ──────────────────────────────────────────────────────
-function MultiplayerBadge({ type }) {
-  const map = {
-    "co-op":        { label: "Co-op",       color: "#34d399" },
-    "multiplayer":  { label: "Multiplayer", color: "#38bdf8" },
-    "singleplayer": { label: "Solo",        color: "#a78bfa" },
+function Chip({ label, color="#94a3b8" }) {
+  return <span style={{background:color+"20",border:`1px solid ${color}40`,borderRadius:20,padding:"2px 8px",fontSize:9,color,fontFamily:"'Space Mono',monospace"}}>{label}</span>;
+}
+
+function Input({ placeholder, value, onChange, type="text", onKeyDown, style:s={} }) {
+  return (
+    <input type={type} placeholder={placeholder} value={value} onChange={onChange} onKeyDown={onKeyDown}
+      style={{background:"rgba(0,0,0,0.45)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:11,
+        padding:"12px 16px",color:"white",fontSize:13,fontFamily:"'Space Mono',monospace",width:"100%",boxSizing:"border-box",...s}}/>
+  );
+}
+
+function Btn({ children, onClick, variant="primary", style:s={}, disabled=false }) {
+  const base = {border:"none",borderRadius:11,padding:"13px 20px",fontWeight:700,fontSize:13,
+    cursor:disabled?"not-allowed":"pointer",fontFamily:"'Space Mono',monospace",transition:"opacity .2s",...s};
+  const variants = {
+    primary: {background:"white",color:"#07070f"},
+    purple:  {background:"linear-gradient(135deg,#a78bfa,#7c3aed)",color:"white"},
+    ghost:   {background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.6)",border:"1px solid rgba(255,255,255,0.1)"},
+    danger:  {background:"rgba(239,68,68,0.15)",color:"#f87171",border:"1px solid rgba(239,68,68,0.3)"},
+    gold:    {background:"linear-gradient(135deg,#f59e0b,#d97706)",color:"#07070f"},
   };
-  const cfg = map[type];
-  if (!cfg) return null;
+  return <button onClick={disabled?undefined:onClick} style={{...base,...variants[variant],...s}} onMouseEnter={e=>!disabled&&(e.currentTarget.style.opacity=".85")} onMouseLeave={e=>e.currentTarget.style.opacity="1"}>{children}</button>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATUS BAR  (shows trial countdown or paid badge)
+// ─────────────────────────────────────────────────────────────────────────────
+function StatusBar({ user, onUpgrade, onLogout }) {
+  const status = getAccountStatus(user);
+  const daysLeft = getTrialDaysLeft(user);
+
+  const barColor = status==="paid" ? "#4ade80" : status==="trial" ? (daysLeft<=2?"#f97316":"#fbbf24") : "#f87171";
+  const barBg    = barColor+"18";
+
   return (
-    <span style={{ background: cfg.color + "20", border: `1px solid ${cfg.color}40`, borderRadius: 20, padding: "2px 8px", fontSize: 9, color: cfg.color, fontFamily: "'Space Mono', monospace" }}>
-      {cfg.label}
-    </span>
+    <div style={{background:barBg,borderBottom:`1px solid ${barColor}30`,padding:"8px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <div style={{width:8,height:8,borderRadius:"50%",background:barColor,flexShrink:0}}/>
+        {status==="paid" && <span style={{fontSize:11,color:barColor,fontFamily:"'Space Mono',monospace",fontWeight:700}}>✓ Full Access — Lifetime</span>}
+        {status==="trial" && <span style={{fontSize:11,color:barColor,fontFamily:"'Space Mono',monospace"}}>Free Trial — <strong>{daysLeft} day{daysLeft!==1?"s":""} left</strong></span>}
+        {status==="expired" && <span style={{fontSize:11,color:barColor,fontFamily:"'Space Mono',monospace",fontWeight:700}}>⚠ Trial Expired — Upgrade to continue</span>}
+      </div>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        {status!=="paid" && <Btn onClick={onUpgrade} variant="gold" style={{padding:"5px 14px",fontSize:11,borderRadius:8}}>Unlock Full Access — {PRICE}</Btn>}
+        <span style={{fontSize:11,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace"}}>Hi, {user.name}</span>
+        <Btn onClick={onLogout} variant="ghost" style={{padding:"4px 10px",fontSize:10,borderRadius:7}}>Sign out</Btn>
+      </div>
+    </div>
   );
 }
 
-// ── Difficulty badge ───────────────────────────────────────────────────────
-function DiffBadge({ level }) {
-  const map = { Relaxed: "#4ade80", Medium: "#fbbf24", Challenging: "#f87171" };
-  const color = map[level] || "#94a3b8";
+// ─────────────────────────────────────────────────────────────────────────────
+// PAYWALL MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+function PaywallModal({ user, onClose, onSuccess }) {
+  const [step, setStep] = useState("offer"); // offer | payment | success
+  const [card, setCard] = useState({ number:"", expiry:"", cvc:"", name:"" });
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const status = getAccountStatus(user);
+
+  const fmtCard = v => v.replace(/\D/g,"").replace(/(\d{4})/g,"$1 ").trim().slice(0,19);
+  const fmtExp  = v => v.replace(/\D/g,"").replace(/(\d{2})(\d)/,"$1/$2").slice(0,5);
+
+  const handlePay = async () => {
+    if (!card.number || !card.expiry || !card.cvc || !card.name) { setErr("Please fill in all fields."); return; }
+    setErr(""); setLoading(true);
+    // Simulate Stripe call (replace with real Stripe.js in production)
+    await new Promise(r => setTimeout(r, 1800));
+    setLoading(false);
+    setStep("success");
+    onSuccess();
+  };
+
   return (
-    <span style={{ background: color + "20", border: `1px solid ${color}40`, borderRadius: 20, padding: "2px 8px", fontSize: 9, color, fontFamily: "'Space Mono', monospace" }}>
-      {level}
-    </span>
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(14px)"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0d0d18",border:"1px solid rgba(255,215,0,0.3)",borderRadius:24,width:"100%",maxWidth:440,boxShadow:"0 0 80px rgba(245,158,11,0.2)",overflow:"hidden"}}>
+
+        {/* Gold top bar */}
+        <div style={{height:4,background:"linear-gradient(90deg,#f59e0b,#d97706)"}}/>
+
+        <div style={{padding:28}}>
+          {step==="offer" && <>
+            <div style={{textAlign:"center",marginBottom:24}}>
+              <div style={{fontSize:36,marginBottom:8}}>🏆</div>
+              <h2 style={{margin:"0 0 6px",fontSize:22,fontFamily:"'Bitter',serif",color:"white"}}>Unlock Full Access</h2>
+              <p style={{margin:0,fontSize:13,color:"rgba(255,255,255,0.45)",fontFamily:"'Space Mono',monospace"}}>One-time payment. No subscriptions. Ever.</p>
+            </div>
+
+            {status==="expired" && (
+              <div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:12,padding:12,marginBottom:18,fontSize:12,color:"#fca5a5",fontFamily:"'Space Mono',monospace",textAlign:"center"}}>
+                Your 7-day trial has ended.
+              </div>
+            )}
+
+            {/* Feature list */}
+            <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:24}}>
+              {[
+                ["🎮","500,000+ games","Full database, always updated"],
+                ["⚙","All filters unlocked","Genre, difficulty, price, multiplayer & more"],
+                ["🔍","Unlimited searches","No daily limits, ever"],
+                ["📚","Personal library","Save, track & review your games"],
+                ["🏅","Steam Deck badges","Coming in Phase 3"],
+              ].map(([icon,title,desc])=>(
+                <div key={title} style={{display:"flex",alignItems:"center",gap:12,background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"10px 14px"}}>
+                  <span style={{fontSize:20,flexShrink:0}}>{icon}</span>
+                  <div>
+                    <div style={{fontSize:13,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{title}</div>
+                    <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace"}}>{desc}</div>
+                  </div>
+                  <span style={{marginLeft:"auto",color:"#4ade80",fontSize:14}}>✓</span>
+                </div>
+              ))}
+            </div>
+
+            <Btn onClick={()=>setStep("payment")} variant="gold" style={{width:"100%",fontSize:15,padding:"14px",borderRadius:13}}>
+              Continue — {PRICE} one-time →
+            </Btn>
+            <div style={{textAlign:"center",marginTop:10,fontSize:10,color:"rgba(255,255,255,0.25)",fontFamily:"'Space Mono',monospace"}}>
+              Secured by Stripe · No recurring charges
+            </div>
+          </>}
+
+          {step==="payment" && <>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:22}}>
+              <button onClick={()=>setStep("offer")} style={{background:"rgba(255,255,255,0.07)",border:"none",color:"white",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:14}}>←</button>
+              <h2 style={{margin:0,fontSize:18,fontFamily:"'Bitter',serif",color:"white"}}>Payment Details</h2>
+              <span style={{marginLeft:"auto",fontSize:13,color:"#f59e0b",fontFamily:"'Space Mono',monospace",fontWeight:700}}>{PRICE}</span>
+            </div>
+
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              <div>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",letterSpacing:1,marginBottom:6}}>CARDHOLDER NAME</div>
+                <Input placeholder="Name on card" value={card.name} onChange={e=>setCard(c=>({...c,name:e.target.value}))}/>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",letterSpacing:1,marginBottom:6}}>CARD NUMBER</div>
+                <Input placeholder="1234 5678 9012 3456" value={card.number} onChange={e=>setCard(c=>({...c,number:fmtCard(e.target.value)}))}/>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                <div>
+                  <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",letterSpacing:1,marginBottom:6}}>EXPIRY</div>
+                  <Input placeholder="MM/YY" value={card.expiry} onChange={e=>setCard(c=>({...c,expiry:fmtExp(e.target.value)}))}/>
+                </div>
+                <div>
+                  <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",letterSpacing:1,marginBottom:6}}>CVC</div>
+                  <Input placeholder="123" value={card.cvc} onChange={e=>setCard(c=>({...c,cvc:e.target.value.replace(/\D/g,"").slice(0,4)}))}/>
+                </div>
+              </div>
+            </div>
+
+            {err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>⚠ {err}</div>}
+
+            <Btn onClick={handlePay} variant="gold" style={{width:"100%",marginTop:18,fontSize:14,padding:"14px",borderRadius:13}} disabled={loading}>
+              {loading ? "Processing..." : `Pay ${PRICE} →`}
+            </Btn>
+
+            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:12}}>
+              <span style={{fontSize:14}}>🔒</span>
+              <span style={{fontSize:10,color:"rgba(255,255,255,0.25)",fontFamily:"'Space Mono',monospace"}}>256-bit SSL encryption · Powered by Stripe</span>
+            </div>
+
+            <div style={{marginTop:14,padding:12,background:"rgba(255,255,255,0.03)",borderRadius:10,fontSize:11,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",lineHeight:1.6}}>
+              ⚠ This is a demo payment form. To go live, connect your Stripe publishable key and use Stripe.js for real card processing.
+            </div>
+          </>}
+
+          {step==="success" && (
+            <div style={{textAlign:"center",padding:"16px 0"}}>
+              <div style={{fontSize:52,marginBottom:12}}>🎉</div>
+              <h2 style={{margin:"0 0 8px",fontSize:22,fontFamily:"'Bitter',serif",color:"white"}}>You're in!</h2>
+              <p style={{fontSize:13,color:"rgba(255,255,255,0.5)",fontFamily:"'Space Mono',monospace",marginBottom:24}}>Full access unlocked. Welcome to Worth My Time.</p>
+              <Btn onClick={onClose} variant="gold" style={{padding:"12px 32px",fontSize:13}}>Start Exploring →</Btn>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
-// ── Game Card ──────────────────────────────────────────────────────────────
-function GameCard({ game, onClick }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTH SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+function AuthScreen({ onLogin }) {
+  const [mode, setMode] = useState("signup");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [pass, setPass]   = useState("");
+  const [err, setErr]     = useState("");
+
+  const submit = () => {
+    if (!email) { setErr("Email is required."); return; }
+    if (mode==="signup" && !name) { setErr("Name is required."); return; }
+    setErr("");
+    const user = createUser(name||email.split("@")[0], email);
+    onLogin(user);
+  };
+
+  return (
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:20,background:"#07070f",backgroundImage:"radial-gradient(ellipse at 30% 20%, #1a0535 0%, transparent 55%), radial-gradient(ellipse at 70% 80%, #051528 0%, transparent 55%)"}}>
+      <div style={{width:"100%",maxWidth:400}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <h1 style={{margin:"0 0 6px",fontSize:34,fontFamily:"'Bitter',serif",fontWeight:900,color:"white",letterSpacing:-1}}>Worth My Time?</h1>
+          <p style={{color:"rgba(255,255,255,0.35)",fontSize:12,fontFamily:"'Space Mono',monospace",margin:0}}>Game intelligence for busy people</p>
+        </div>
+
+        {/* Trial offer banner */}
+        <div style={{background:"rgba(167,139,250,0.12)",border:"1px solid rgba(167,139,250,0.3)",borderRadius:14,padding:"12px 16px",marginBottom:20,textAlign:"center"}}>
+          <div style={{fontSize:13,color:"#a78bfa",fontFamily:"'Space Mono',monospace",fontWeight:700,marginBottom:3}}>🎮 Start your 7-day free trial</div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace"}}>Full access free for 7 days · Then just {PRICE} one-time</div>
+        </div>
+
+        <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.09)",borderRadius:20,padding:26}}>
+          {/* Mode toggle */}
+          <div style={{display:"flex",background:"rgba(0,0,0,0.4)",borderRadius:11,padding:3,marginBottom:22,gap:3}}>
+            {["signup","login"].map(m=>(
+              <button key={m} onClick={()=>{setMode(m);setErr("");}}
+                style={{flex:1,background:mode===m?"white":"transparent",color:mode===m?"#07070f":"rgba(255,255,255,0.4)",border:"none",borderRadius:9,padding:"9px",cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"'Space Mono',monospace",transition:"all .2s"}}>
+                {m==="signup"?"Create Account":"Sign In"}
+              </button>
+            ))}
+          </div>
+
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            {mode==="signup" && <Input placeholder="Your name" value={name} onChange={e=>setName(e.target.value)}/>}
+            <Input placeholder="Email address" value={email} onChange={e=>setEmail(e.target.value)}/>
+            <Input placeholder="Password" type="password" value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+          </div>
+
+          {err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>⚠ {err}</div>}
+
+          <Btn onClick={submit} variant="purple" style={{width:"100%",marginTop:16}}>
+            {mode==="signup" ? "Start Free Trial →" : "Sign In →"}
+          </Btn>
+
+          {mode==="signup" && (
+            <div style={{marginTop:12,fontSize:10,color:"rgba(255,255,255,0.25)",fontFamily:"'Space Mono',monospace",textAlign:"center",lineHeight:1.6}}>
+              7 days free · No credit card required · {PRICE} one-time after trial
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GAME CARD
+// ─────────────────────────────────────────────────────────────────────────────
+function GameCard({ game, onClick, locked }) {
   const [hov, setHov] = useState(false);
   const scores = computeScores(game);
-  const color = getAccentColor(game.genres);
-  const bg = game.background_image;
-  const sessionCat = getSessionCategory(game.genres);
-  const sessionLabel = { short: "⚡ Quick", medium: "🕐 Mid", long: "🏔 Long" }[sessionCat];
-  const mpType = getMultiplayerType(game);
+  const color  = accentOf(game.genres);
+  const cat    = sessionCatOf(game.genres);
+  const catLbl = {short:"⚡ Quick",medium:"🕐 Mid",long:"🏔 Long"}[cat];
 
   return (
-    <div onClick={() => onClick(game)} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{
-        borderRadius: 18, overflow: "hidden", cursor: "pointer", position: "relative",
-        border: `1px solid ${hov ? color + "70" : "rgba(255,255,255,0.07)"}`,
-        transform: hov ? "translateY(-4px) scale(1.01)" : "translateY(0) scale(1)",
-        transition: "all 0.28s cubic-bezier(.4,0,.2,1)",
-        boxShadow: hov ? `0 20px 60px ${color}30` : "0 2px 12px rgba(0,0,0,0.4)",
-        background: "#0d0d18",
-      }}>
-      <div style={{ position: "relative", height: 130, overflow: "hidden", background: "#1a1a2e" }}>
-        {bg
-          ? <img src={bg} alt={game.name} style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.8, transition: "transform 0.4s", transform: hov ? "scale(1.05)" : "scale(1)" }} />
-          : <div style={{ width: "100%", height: "100%", background: `linear-gradient(135deg, ${color}30, #0d0d18)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36 }}>🎮</div>}
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, #0d0d18 0%, transparent 60%)" }} />
-        <div style={{ position: "absolute", top: 8, left: 8, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)", borderRadius: 20, padding: "2px 8px", fontSize: 9, color, fontFamily: "'Space Mono', monospace", border: `1px solid ${color}40` }}>{sessionLabel}</div>
-        {game.metacritic && <div style={{ position: "absolute", top: 8, right: 8, background: game.metacritic > 74 ? "#16a34a" : game.metacritic > 59 ? "#ca8a04" : "#dc2626", borderRadius: 7, padding: "2px 7px", fontSize: 10, color: "white", fontWeight: 700, fontFamily: "'Space Mono', monospace" }}>MC {game.metacritic}</div>}
+    <div onClick={()=>onClick(game)} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+      style={{borderRadius:18,overflow:"hidden",cursor:"pointer",position:"relative",
+        border:`1px solid ${hov?color+"70":"rgba(255,255,255,0.07)"}`,
+        transform:hov?"translateY(-4px) scale(1.01)":"translateY(0) scale(1)",
+        transition:"all .28s cubic-bezier(.4,0,.2,1)",
+        boxShadow:hov?`0 20px 60px ${color}30`:"0 2px 12px rgba(0,0,0,0.4)",
+        background:"#0d0d18",filter:locked?"blur(2px) brightness(0.5)":"none"}}>
+      <div style={{position:"relative",height:125,overflow:"hidden",background:"#1a1a2e"}}>
+        {game.background_image
+          ? <img src={game.background_image} alt={game.name} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.8,transition:"transform .4s",transform:hov?"scale(1.05)":"scale(1)"}}/>
+          : <div style={{width:"100%",height:"100%",background:`linear-gradient(135deg,${color}30,#0d0d18)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:34}}>🎮</div>}
+        <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,#0d0d18 0%,transparent 60%)"}}/>
+        <div style={{position:"absolute",top:8,left:8,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(8px)",borderRadius:20,padding:"2px 8px",fontSize:9,color,fontFamily:"'Space Mono',monospace",border:`1px solid ${color}40`}}>{catLbl}</div>
+        {game.metacritic && <div style={{position:"absolute",top:8,right:8,background:game.metacritic>74?"#16a34a":game.metacritic>59?"#ca8a04":"#dc2626",borderRadius:7,padding:"2px 7px",fontSize:10,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>MC {game.metacritic}</div>}
       </div>
-
-      <div style={{ padding: "12px 14px 14px" }}>
-        <h3 style={{ margin: "0 0 4px", fontSize: 14, fontFamily: "'Bitter', serif", fontWeight: 700, color: "white", lineHeight: 1.2, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{game.name}</h3>
-        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontFamily: "'Space Mono', monospace", marginBottom: 6 }}>
-          {(game.genres || []).slice(0, 2).map(g => g.name).join(" · ")}
+      <div style={{padding:"11px 13px 13px"}}>
+        <h3 style={{margin:"0 0 3px",fontSize:14,fontFamily:"'Bitter',serif",fontWeight:700,color:"white",lineHeight:1.2,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{game.name}</h3>
+        <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",marginBottom:7}}>
+          {(game.genres||[]).slice(0,2).map(g=>g.name).join(" · ")}
         </div>
-
-        {/* Badges row */}
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 10 }}>
-          <DiffBadge level={scores.difficulty} />
-          <MultiplayerBadge type={mpType} />
+        <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>
+          <Chip label={scores.difficulty} color={scores.difficulty==="Relaxed"?"#4ade80":scores.difficulty==="Challenging"?"#f87171":"#fbbf24"}/>
         </div>
-
-        <div style={{ display: "flex", justifyContent: "space-around", margin: "10px 0", padding: "8px 0", borderTop: "1px solid rgba(255,255,255,0.05)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-          <ScoreRing value={scores.timeScore} label="Time" color={color} />
-          <ScoreRing value={scores.advScore} label="Adventure" color={color} />
-          <ScoreRing value={scores.worthScore} label="Worth It" color={color} />
+        <div style={{display:"flex",justifyContent:"space-around",margin:"8px 0",padding:"8px 0",borderTop:"1px solid rgba(255,255,255,0.05)",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+          <ScoreRing value={scores.t} label="Time"      color={color}/>
+          <ScoreRing value={scores.a} label="Adventure" color={color}/>
+          <ScoreRing value={scores.w} label="Worth It"  color={color}/>
         </div>
-
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "rgba(255,255,255,0.35)", fontFamily: "'Space Mono', monospace" }}>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace"}}>
           <span>⏱ {scores.hltb.session}</span>
           <span>📖 {scores.hltb.main}</span>
         </div>
@@ -254,82 +462,56 @@ function GameCard({ game, onClick }) {
   );
 }
 
-// ── Modal ──────────────────────────────────────────────────────────────────
-function Modal({ game, onClose }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+function GameModal({ game, onClose }) {
   if (!game) return null;
   const scores = computeScores(game);
-  const color = getAccentColor(game.genres);
-  const stores = getStoreLinks(game);
-  const mpType = getMultiplayerType(game);
-  const priceTier = getPriceTier(game);
-  const priceTierLabel = { "free-budget": "Free / Budget", "mid": "~$20–$40", "full-price": "$50–$70" }[priceTier];
-
+  const color  = accentOf(game.genres);
+  const stores = storesOf(game);
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.88)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, backdropFilter: "blur(12px)" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#0d0d18", border: `1px solid ${color}50`, borderRadius: 24, width: "100%", maxWidth: 520, maxHeight: "90vh", overflowY: "auto", boxShadow: `0 0 100px ${color}25`, position: "relative" }}>
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(12px)"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0d0d18",border:`1px solid ${color}50`,borderRadius:24,width:"100%",maxWidth:500,maxHeight:"90vh",overflowY:"auto",boxShadow:`0 0 100px ${color}25`,position:"relative"}}>
         {game.background_image && (
-          <div style={{ height: 190, overflow: "hidden", borderRadius: "24px 24px 0 0", position: "relative" }}>
-            <img src={game.background_image} alt={game.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            <div style={{ position: "absolute", inset: 0, background: `linear-gradient(to top, #0d0d18, transparent 50%)` }} />
+          <div style={{height:180,overflow:"hidden",borderRadius:"24px 24px 0 0",position:"relative"}}>
+            <img src={game.background_image} alt={game.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+            <div style={{position:"absolute",inset:0,background:`linear-gradient(to top,#0d0d18,transparent 50%)`}}/>
           </div>
         )}
-        <div style={{ padding: 22 }}>
-          <button onClick={onClose} style={{ position: "absolute", top: 14, right: 14, background: "rgba(0,0,0,0.6)", border: "1px solid rgba(255,255,255,0.15)", color: "white", borderRadius: 10, width: 32, height: 32, cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
-
-          <div style={{ fontSize: 10, color, fontFamily: "'Space Mono', monospace", letterSpacing: 1.5, marginBottom: 4 }}>{(game.genres || []).map(g => g.name).join(" · ")}</div>
-          <h2 style={{ margin: "0 0 4px", fontSize: 24, fontFamily: "'Bitter', serif", color: "white", lineHeight: 1.2 }}>{game.name}</h2>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 18 }}>
-            <DiffBadge level={scores.difficulty} />
-            <MultiplayerBadge type={mpType} />
-            <span style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 20, padding: "2px 8px", fontSize: 9, color: "rgba(255,255,255,0.5)", fontFamily: "'Space Mono', monospace" }}>💰 {priceTierLabel}</span>
-            <span style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 20, padding: "2px 8px", fontSize: 9, color: "rgba(255,255,255,0.5)", fontFamily: "'Space Mono', monospace" }}>🔞 {scores.esrb}</span>
+        <div style={{padding:20}}>
+          <button onClick={onClose} style={{position:"absolute",top:14,right:14,background:"rgba(0,0,0,0.6)",border:"1px solid rgba(255,255,255,0.15)",color:"white",borderRadius:10,width:32,height:32,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+          <div style={{fontSize:9,color,fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:4}}>{(game.genres||[]).map(g=>g.name).join(" · ")}</div>
+          <h2 style={{margin:"0 0 10px",fontSize:22,fontFamily:"'Bitter',serif",color:"white",lineHeight:1.2}}>{game.name}</h2>
+          <div style={{display:"flex",justifyContent:"space-around",marginBottom:18,padding:12,background:"rgba(255,255,255,0.03)",borderRadius:14,border:"1px solid rgba(255,255,255,0.06)"}}>
+            <ScoreRing value={scores.t} label="Time Friendly" color={color} size={68}/>
+            <ScoreRing value={scores.a} label="Adventure"     color={color} size={68}/>
+            <ScoreRing value={scores.w} label="Worth It"      color={color} size={68}/>
           </div>
-
-          <div style={{ display: "flex", justifyContent: "space-around", marginBottom: 20, padding: 14, background: "rgba(255,255,255,0.03)", borderRadius: 14, border: "1px solid rgba(255,255,255,0.06)" }}>
-            <ScoreRing value={scores.timeScore} label="Time Friendly" color={color} size={70} />
-            <ScoreRing value={scores.advScore} label="Adventure" color={color} size={70} />
-            <ScoreRing value={scores.worthScore} label="Worth It" color={color} size={70} />
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 18 }}>
-            {[
-              ["⏱ Session", scores.hltb.session],
-              ["📖 Main Story", scores.hltb.main],
-              ["🏆 100%", scores.hltb.complete],
-              ["🎯 Difficulty", scores.difficulty],
-              ["👥 Players", mpType === "unknown" ? "N/A" : mpType],
-              ["💰 Est. Price", priceTierLabel],
-              ["⭐ Rating", game.rating ? `${game.rating}/5` : "N/A"],
-              ["📊 Metacritic", game.metacritic || "N/A"],
-            ].map(([k, v]) => (
-              <div key={k} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "10px 12px" }}>
-                <div style={{ fontSize: 9, color: "rgba(255,255,255,0.28)", fontFamily: "'Space Mono', monospace", marginBottom: 3 }}>{k}</div>
-                <div style={{ fontSize: 12, color: "white", fontWeight: 700, fontFamily: "'Space Mono', monospace" }}>{v}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+            {[["⏱ Session",scores.hltb.session],["📖 Story",scores.hltb.main],["🏆 100%",scores.hltb.complete],["🎯 Difficulty",scores.difficulty],["⭐ Rating",game.rating?`${game.rating}/5`:"N/A"],["📊 Metacritic",game.metacritic||"N/A"],["🔞 Age",scores.esrb],["📅 Released",game.released||"N/A"]].map(([k,v])=>(
+              <div key={k} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"9px 12px"}}>
+                <div style={{fontSize:9,color:"rgba(255,255,255,0.28)",fontFamily:"'Space Mono',monospace",marginBottom:3}}>{k}</div>
+                <div style={{fontSize:12,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{v}</div>
               </div>
             ))}
           </div>
-
-          {/* Platforms */}
-          {(game.platforms || []).length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 9, color: "rgba(255,255,255,0.28)", fontFamily: "'Space Mono', monospace", letterSpacing: 1.5, marginBottom: 8 }}>AVAILABLE ON</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                {(game.platforms || []).map(p => (
-                  <span key={p.platform.id} style={{ background: `${color}15`, border: `1px solid ${color}30`, borderRadius: 20, padding: "3px 9px", fontSize: 9, color, fontFamily: "'Space Mono', monospace" }}>{p.platform.name}</span>
-                ))}
+          {(game.platforms||[]).length>0 && (
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:9,color:"rgba(255,255,255,0.28)",fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:7}}>AVAILABLE ON</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                {(game.platforms||[]).map(p=><Chip key={p.platform.id} label={p.platform.name} color={color}/>)}
               </div>
             </div>
           )}
-
-          {/* Store links */}
           <div>
-            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.28)", fontFamily: "'Space Mono', monospace", letterSpacing: 1.5, marginBottom: 8 }}>BUY / FIND THIS GAME</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {stores.map(s => (
+            <div style={{fontSize:9,color:"rgba(255,255,255,0.28)",fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:7}}>BUY / FIND THIS GAME</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {stores.map(s=>(
                 <a key={s.name} href={s.url} target="_blank" rel="noopener noreferrer"
-                  style={{ background: `${color}12`, border: `1px solid ${color}35`, borderRadius: 10, padding: "8px 12px", textAlign: "center", color: "white", textDecoration: "none", fontSize: 11, fontFamily: "'Space Mono', monospace", transition: "background 0.2s", flex: "1 0 auto" }}
-                  onMouseEnter={e => e.currentTarget.style.background = `${color}28`}
-                  onMouseLeave={e => e.currentTarget.style.background = `${color}12`}>
+                  style={{background:`${color}12`,border:`1px solid ${color}35`,borderRadius:10,padding:"8px 12px",textAlign:"center",color:"white",textDecoration:"none",fontSize:11,fontFamily:"'Space Mono',monospace",flex:"1 0 auto",transition:"background .2s"}}
+                  onMouseEnter={e=>e.currentTarget.style.background=`${color}28`}
+                  onMouseLeave={e=>e.currentTarget.style.background=`${color}12`}>
                   {s.icon} {s.name}
                 </a>
               ))}
@@ -341,310 +523,253 @@ function Modal({ game, onClose }) {
   );
 }
 
-// ── Filter Drawer (mobile-friendly collapsible) ────────────────────────────
-function FilterDrawer({ filters, setFilters, onReset }) {
-  const [open, setOpen] = useState(false);
-  const activeCount = Object.values(filters).filter(v => v !== "all" && v !== false).length;
-
+// ─────────────────────────────────────────────────────────────────────────────
+// LOCKED OVERLAY (shown when trial expired and user tries to filter)
+// ─────────────────────────────────────────────────────────────────────────────
+function LockedOverlay({ onUpgrade }) {
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto 16px", padding: "0 16px" }}>
-      <button onClick={() => setOpen(!open)} style={{
-        background: activeCount > 0 ? "rgba(167,139,250,0.15)" : "rgba(255,255,255,0.05)",
-        border: `1px solid ${activeCount > 0 ? "#a78bfa60" : "rgba(255,255,255,0.1)"}`,
-        borderRadius: 12, padding: "10px 16px", color: "white", cursor: "pointer",
-        fontSize: 12, fontFamily: "'Space Mono', monospace", display: "flex", alignItems: "center", gap: 8,
-      }}>
-        <span>⚙ Filters</span>
-        {activeCount > 0 && <span style={{ background: "#a78bfa", color: "#080810", borderRadius: 20, padding: "1px 7px", fontSize: 10, fontWeight: 700 }}>{activeCount}</span>}
-        <span style={{ marginLeft: "auto", opacity: 0.5 }}>{open ? "▲" : "▼"}</span>
-      </button>
-
-      {open && (
-        <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: 16, marginTop: 8, display: "flex", flexDirection: "column", gap: 12 }}>
-
-          {/* Session length */}
-          <div>
-            <FilterLabel>⏱ SESSION LENGTH</FilterLabel>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {[["all","All"],["short","⚡ Quick <1hr"],["medium","🕐 1–2 hrs"],["long","🏔 2+ hrs"]].map(([v,l]) => (
-                <Pill key={v} label={l} active={filters.time === v} onClick={() => setFilters(f => ({ ...f, time: v }))} />
-              ))}
-            </div>
-          </div>
-
-          {/* Genre */}
-          <div>
-            <FilterLabel>🎮 GENRE</FilterLabel>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {["all","Action","Adventure","RPG","Shooter","Strategy","Puzzle","Platformer","Sports","Racing","Indie","Simulation","Fighting","Arcade","Family"].map(v => (
-                <Pill key={v} label={v === "all" ? "All Genres" : v} active={filters.genre === v} color="#60a5fa" onClick={() => setFilters(f => ({ ...f, genre: v }))} />
-              ))}
-            </div>
-          </div>
-
-          {/* Platform */}
-          <div>
-            <FilterLabel>🖥 PLATFORM</FilterLabel>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {[["all","All"],["pc","PC"],["playstation","PlayStation"],["xbox","Xbox"],["nintendo","Nintendo"],["mobile","Mobile"]].map(([v,l]) => (
-                <Pill key={v} label={l} active={filters.platform === v} color="#a78bfa" onClick={() => setFilters(f => ({ ...f, platform: v }))} />
-              ))}
-            </div>
-          </div>
-
-          {/* Difficulty */}
-          <div>
-            <FilterLabel>🎯 DIFFICULTY</FilterLabel>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {[["all","All"],["easy","Relaxed"],["medium","Medium"],["hard","Challenging"]].map(([v,l]) => (
-                <Pill key={v} label={l} active={filters.difficulty === v} color="#fbbf24" onClick={() => setFilters(f => ({ ...f, difficulty: v }))} />
-              ))}
-            </div>
-          </div>
-
-          {/* Multiplayer */}
-          <div>
-            <FilterLabel>👥 PLAY STYLE</FilterLabel>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {[["all","All"],["singleplayer","Solo Only"],["multiplayer","Multiplayer"],["co-op","Co-op"]].map(([v,l]) => (
-                <Pill key={v} label={l} active={filters.multiplayer === v} color="#34d399" onClick={() => setFilters(f => ({ ...f, multiplayer: v }))} />
-              ))}
-            </div>
-          </div>
-
-          {/* Price */}
-          <div>
-            <FilterLabel>💰 PRICE RANGE</FilterLabel>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {[["all","All Prices"],["free-budget","Free / Budget"],["mid","~$20–$40"],["full-price","$50–$70"]].map(([v,l]) => (
-                <Pill key={v} label={l} active={filters.price === v} color="#fb923c" onClick={() => setFilters(f => ({ ...f, price: v }))} />
-              ))}
-            </div>
-          </div>
-
-          {/* Reset */}
-          {activeCount > 0 && (
-            <button onClick={onReset} style={{ alignSelf: "flex-start", background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: "7px 14px", color: "#f87171", fontSize: 11, cursor: "pointer", fontFamily: "'Space Mono', monospace" }}>
-              ✕ Clear all filters
-            </button>
-          )}
-        </div>
-      )}
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",padding:20,backdropFilter:"blur(10px)"}}>
+      <div style={{textAlign:"center",maxWidth:340}}>
+        <div style={{fontSize:48,marginBottom:12}}>🔒</div>
+        <h2 style={{color:"white",fontFamily:"'Bitter',serif",margin:"0 0 8px"}}>Trial Ended</h2>
+        <p style={{color:"rgba(255,255,255,0.45)",fontFamily:"'Space Mono',monospace",fontSize:12,lineHeight:1.7,marginBottom:24}}>
+          Your 7-day free trial has ended. Unlock full access for a one-time payment of {PRICE} — no subscriptions, ever.
+        </p>
+        <Btn onClick={onUpgrade} variant="gold" style={{padding:"14px 32px",fontSize:14}}>Unlock Full Access — {PRICE}</Btn>
+      </div>
     </div>
   );
 }
 
-// ── Main App ───────────────────────────────────────────────────────────────
-const DEFAULT_FILTERS = { time: "all", genre: "all", platform: "all", difficulty: "all", multiplayer: "all", price: "all" };
-const platformMap = { all: "", pc: "4", playstation: "187", xbox: "186", nintendo: "7", mobile: "21,3" };
-const sortMap = { rating: "-rating", metacritic: "-metacritic", newest: "-released", popular: "-added" };
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN APP
+// ─────────────────────────────────────────────────────────────────────────────
+const DEFAULT_FILTERS = {time:"all",genre:"all",platform:"all",difficulty:"all",multiplayer:"all",price:"all"};
+const PLATFORM_MAP = {all:"",pc:"4",playstation:"187",xbox:"186",nintendo:"7",mobile:"21,3"};
+const SORT_MAP     = {rating:"-rating",metacritic:"-metacritic",newest:"-released",popular:"-added"};
 
 export default function App() {
-  const [games, setGames] = useState([]);
+  const [user, setUser]       = useState(null);
+  const [appReady, setAppReady] = useState(false);
+  const [games, setGames]     = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
+  const [error, setError]     = useState("");
+  const [search, setSearch]   = useState("");
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [sortBy, setSortBy] = useState("rating");
+  const [sortBy, setSortBy]   = useState("rating");
   const [selected, setSelected] = useState(null);
-  const [page, setPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage]       = useState(1);
+  const [total, setTotal]     = useState(0);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [minutes, setMinutes] = useState("");
-  const debounceRef = useRef(null);
+  const [showPaywall, setShowPaywall] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const debRef = useRef(null);
+
+  // Load user from storage
+  useEffect(() => {
+    store.get("wmt_user").then(u => { if (u) setUser(u); setAppReady(true); });
+  }, []);
+
+  const status = getAccountStatus(user);
+  const access = hasFullAccess(user);
+
+  const handleLogin = async (u) => { await store.set("wmt_user", u); setUser(u); };
+  const handleLogout = async () => { await store.del("wmt_user"); setUser(null); setGames([]); setHasLoaded(false); };
+  const handlePaid = async () => {
+    const updated = { ...user, isPaid:true, paidAt:Date.now() };
+    await store.set("wmt_user", updated);
+    setUser(updated);
+    setShowPaywall(false);
+  };
 
   const fetchGames = useCallback(async (q, f, sort, pg) => {
     setLoading(true); setError("");
     try {
-      const params = new URLSearchParams({ key: RAWG_KEY, page_size: 20, page: pg, ordering: sortMap[sort] || "-rating" });
-      if (q) params.set("search", q);
-      if (f.platform !== "all" && platformMap[f.platform]) params.set("platforms", platformMap[f.platform]);
-
-      // Genre filter
-      const genreFilters = [];
-      if (f.time === "short") genreFilters.push("puzzle,arcade,card-games,fighting,racing,sports");
-      if (f.time === "long")  genreFilters.push("role-playing-games-rpg,strategy,simulation");
-      if (f.genre !== "all" && GENRE_MAP[f.genre]) genreFilters.push(GENRE_MAP[f.genre]);
-      if (genreFilters.length) params.set("genres", genreFilters.join(","));
-
-      // Tags for multiplayer
-      if (f.multiplayer === "singleplayer") params.set("tags", "singleplayer");
-      if (f.multiplayer === "multiplayer")  params.set("tags", "multiplayer");
-      if (f.multiplayer === "co-op")        params.set("tags", "co-op");
-
-      const res = await fetch(`${RAWG_BASE}/games?${params}`);
-      if (!res.ok) throw new Error(`API error ${res.status}`);
+      const p = new URLSearchParams({ key:RAWG_KEY, page_size:20, page:pg, ordering:SORT_MAP[sort]||"-rating" });
+      if (q) p.set("search", q);
+      if (f.platform!=="all" && PLATFORM_MAP[f.platform]) p.set("platforms", PLATFORM_MAP[f.platform]);
+      const gs=[];
+      if (f.time==="short") gs.push("puzzle,arcade,card-games,fighting,racing,sports");
+      if (f.time==="long")  gs.push("role-playing-games-rpg,strategy,simulation");
+      if (f.genre!=="all" && GENRE_MAP[f.genre]) gs.push(GENRE_MAP[f.genre]);
+      if (gs.length) p.set("genres", gs.join(","));
+      if (f.multiplayer==="singleplayer") p.set("tags","singleplayer");
+      if (f.multiplayer==="multiplayer")  p.set("tags","multiplayer");
+      if (f.multiplayer==="co-op")        p.set("tags","co-op");
+      const res = await fetch(`${RAWG_BASE}/games?${p}`);
+      if (!res.ok) throw new Error();
       const data = await res.json();
-
-      // Client-side difficulty + price filter
-      let results = data.results || [];
-      if (f.difficulty !== "all") {
-        results = results.filter(g => {
-          const d = inferDifficulty(g.genres || []);
-          if (f.difficulty === "easy") return d === "Relaxed";
-          if (f.difficulty === "medium") return d === "Medium";
-          if (f.difficulty === "hard") return d === "Challenging";
-          return true;
-        });
-      }
-      if (f.price !== "all") {
-        results = results.filter(g => getPriceTier(g) === f.price);
-      }
-
-      setGames(results);
-      setTotalCount(data.count || 0);
-      setHasLoaded(true);
-    } catch (e) {
-      setError("Couldn't reach the game database. Check your RAWG API key at rawg.io/apidocs");
-    }
+      let results = data.results||[];
+      if (f.difficulty!=="all") results=results.filter(g=>{ const d=difficultyOf(g.genres||[]); return f.difficulty==="easy"?d==="Relaxed":f.difficulty==="hard"?d==="Challenging":d==="Medium"; });
+      setGames(results); setTotal(data.count||0); setHasLoaded(true);
+    } catch { setError("Couldn't reach the game database. Check your RAWG API key."); }
     setLoading(false);
   }, []);
 
   useEffect(() => {
+    if (!user || !access) return;
     if (!hasLoaded && !search) return;
-    clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => { setPage(1); fetchGames(search, filters, sortBy, 1); }, 400);
-  }, [search, filters, sortBy]);
+    clearTimeout(debRef.current);
+    debRef.current = setTimeout(()=>{ setPage(1); fetchGames(search,filters,sortBy,1); }, 400);
+  }, [search, filters, sortBy, user]);
 
-  useEffect(() => { if (hasLoaded) fetchGames(search, filters, sortBy, page); }, [page]);
+  useEffect(() => { if (hasLoaded && user && access) fetchGames(search,filters,sortBy,page); }, [page]);
 
   const handleTimeSearch = () => {
-    const m = parseInt(minutes);
-    if (!m) return;
-    const cat = m <= 40 ? "short" : m <= 100 ? "medium" : "long";
-    setFilters(f => ({ ...f, time: cat }));
-    setPage(1);
-    fetchGames(search, { ...filters, time: cat }, sortBy, 1);
+    const m=parseInt(minutes); if (!m) return;
+    const cat=m<=40?"short":m<=100?"medium":"long";
+    const nf={...filters,time:cat}; setFilters(nf); setPage(1); fetchGames(search,nf,sortBy,1);
   };
 
-  const resetFilters = () => { setFilters(DEFAULT_FILTERS); setPage(1); fetchGames(search, DEFAULT_FILTERS, sortBy, 1); };
-  const handleInitialLoad = () => fetchGames("", DEFAULT_FILTERS, "rating", 1);
-  const activeFilterCount = Object.values(filters).filter(v => v !== "all").length;
+  if (!appReady) return <div style={{minHeight:"100vh",background:"#07070f",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",fontSize:12}}>Loading...</div></div>;
+  if (!user) return <><link href="https://fonts.googleapis.com/css2?family=Bitter:wght@700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/><style>{`*{box-sizing:border-box}body{margin:0}input{color-scheme:dark}input::placeholder{color:rgba(255,255,255,0.22)}input:focus{outline:none;border-color:rgba(167,139,250,0.4)!important}`}</style><AuthScreen onLogin={handleLogin}/></>;
 
   return (
     <>
-      <link href="https://fonts.googleapis.com/css2?family=Bitter:wght@700;900&family=Space+Mono:wght@400;700&family=Lora:ital@1&display=swap" rel="stylesheet" />
-      <style>{`
-        * { box-sizing: border-box; }
-        body { margin: 0; background: #080810; }
-        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #0d0d18; } ::-webkit-scrollbar-thumb { background: #2a2a3e; border-radius: 3px; }
-        input::placeholder { color: rgba(255,255,255,0.25); }
-        input:focus { outline: none; border-color: rgba(255,255,255,0.25) !important; }
-        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-        @keyframes fadeIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
-        .card-anim { animation: fadeIn 0.4s ease forwards; opacity: 0; }
-        a { color: inherit; }
-      `}</style>
+      <link href="https://fonts.googleapis.com/css2?family=Bitter:wght@700;900&family=Space+Mono:wght@400;700&family=Lora:ital@1&display=swap" rel="stylesheet"/>
+      <style>{`*{box-sizing:border-box}body{margin:0;background:#080810}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#0d0d18}::-webkit-scrollbar-thumb{background:#2a2a3e;border-radius:3px}input::placeholder{color:rgba(255,255,255,0.25)}input:focus{outline:none;border-color:rgba(255,255,255,0.25)!important}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}.card-anim{animation:fadeIn .4s ease forwards;opacity:0}`}</style>
 
-      <div style={{ minHeight: "100vh", background: "#080810", backgroundImage: "radial-gradient(ellipse at 15% 15%, #1a0a2e 0%, transparent 45%), radial-gradient(ellipse at 85% 85%, #0a1628 0%, transparent 45%)" }}>
+      <div style={{minHeight:"100vh",background:"#080810",backgroundImage:"radial-gradient(ellipse at 15% 15%,#1a0a2e 0%,transparent 45%),radial-gradient(ellipse at 85% 85%,#0a1628 0%,transparent 45%)"}}>
+
+        {/* Status Bar */}
+        <StatusBar user={user} onUpgrade={()=>setShowPaywall(true)} onLogout={handleLogout}/>
 
         {/* Header */}
-        <div style={{ textAlign: "center", padding: "40px 20px 24px" }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 100, padding: "4px 12px", fontSize: 9, color: "rgba(255,255,255,0.4)", letterSpacing: 2, marginBottom: 16, fontFamily: "'Space Mono', monospace" }}>
-            ◈ POWERED BY RAWG · 500,000+ GAMES
-          </div>
-          <h1 style={{ margin: "0 0 6px", fontSize: "clamp(32px, 6vw, 58px)", fontFamily: "'Bitter', serif", fontWeight: 900, color: "white", lineHeight: 1.05, letterSpacing: -1 }}>Worth My Time?</h1>
-          <p style={{ color: "rgba(255,255,255,0.38)", fontSize: 13, margin: "0 auto", maxWidth: 360, lineHeight: 1.7, fontFamily: "'Lora', serif", fontStyle: "italic" }}>
-            Real game intelligence for busy people. Filter by time, genre, difficulty, price & more.
+        <div style={{textAlign:"center",padding:"32px 20px 20px"}}>
+          <h1 style={{margin:"0 0 6px",fontSize:"clamp(30px,6vw,54px)",fontFamily:"'Bitter',serif",fontWeight:900,color:"white",lineHeight:1.05,letterSpacing:-1}}>Worth My Time?</h1>
+          <p style={{color:"rgba(255,255,255,0.38)",fontSize:13,margin:"0 auto",maxWidth:340,lineHeight:1.7,fontFamily:"'Lora',serif",fontStyle:"italic"}}>
+            Real game intelligence for busy people.
           </p>
         </div>
 
         {/* Quick Finder */}
-        <div style={{ maxWidth: 560, margin: "0 auto 20px", padding: "0 16px" }}>
-          <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)", borderRadius: 14, padding: 14 }}>
-            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", fontFamily: "'Space Mono', monospace", letterSpacing: 2, marginBottom: 8 }}>⚡ I HAVE THIS MANY MINUTES</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input type="number" placeholder="e.g. 45" value={minutes} onChange={e => setMinutes(e.target.value)} onKeyDown={e => e.key === "Enter" && handleTimeSearch()}
-                style={{ flex: 1, background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 9, padding: "10px 12px", color: "white", fontSize: 12, fontFamily: "'Space Mono', monospace" }} />
-              <button onClick={handleTimeSearch} style={{ background: "white", color: "#080810", border: "none", borderRadius: 9, padding: "10px 18px", fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "'Space Mono', monospace", whiteSpace: "nowrap" }}>Find Games →</button>
+        <div style={{maxWidth:540,margin:"0 auto 16px",padding:"0 16px"}}>
+          <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.09)",borderRadius:14,padding:14}}>
+            <div style={{fontSize:9,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",letterSpacing:2,marginBottom:8}}>⚡ I HAVE THIS MANY MINUTES</div>
+            <div style={{display:"flex",gap:8}}>
+              <Input placeholder="e.g. 45" type="number" value={minutes} onChange={e=>setMinutes(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleTimeSearch()} style={{padding:"10px 12px",fontSize:12}}/>
+              <Btn onClick={handleTimeSearch} variant="primary" style={{whiteSpace:"nowrap",padding:"10px 16px",fontSize:11,borderRadius:9}}>Find Games →</Btn>
             </div>
           </div>
         </div>
 
         {/* Search */}
-        <div style={{ maxWidth: 560, margin: "0 auto 16px", padding: "0 16px" }}>
-          <input placeholder="Search 500,000+ games — Elden Ring, Minecraft, Celeste..." value={search} onChange={e => setSearch(e.target.value)}
-            style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: "12px 16px", color: "white", fontSize: 12, fontFamily: "'Space Mono', monospace" }} />
+        <div style={{maxWidth:540,margin:"0 auto 14px",padding:"0 16px"}}>
+          <Input placeholder="Search 500,000+ games..." value={search} onChange={e=>setSearch(e.target.value)} style={{padding:"12px 16px",fontSize:12}}/>
         </div>
 
-        {/* Filter Drawer */}
-        <FilterDrawer filters={filters} setFilters={setFilters} onReset={resetFilters} />
+        {/* Filter Toggle */}
+        {access && (
+          <div style={{maxWidth:900,margin:"0 auto 14px",padding:"0 16px"}}>
+            <button onClick={()=>setShowFilters(!showFilters)} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:11,padding:"9px 16px",color:"rgba(255,255,255,0.6)",cursor:"pointer",fontSize:11,fontFamily:"'Space Mono',monospace",display:"flex",alignItems:"center",gap:8}}>
+              ⚙ Filters {showFilters?"▲":"▼"}
+            </button>
+            {showFilters && (
+              <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:13,padding:16,marginTop:8,display:"flex",flexDirection:"column",gap:12}}>
+                {[
+                  ["⏱ SESSION",  [["all","All"],["short","⚡ Quick"],["medium","🕐 Mid"],["long","🏔 Long"]], "time", "white"],
+                  ["🎮 GENRE",   [["all","All"],...Object.keys(GENRE_MAP).map(g=>[g,g])], "genre", "#60a5fa"],
+                  ["🖥 PLATFORM",[["all","All"],["pc","PC"],["playstation","PS"],["xbox","Xbox"],["nintendo","Nintendo"],["mobile","Mobile"]], "platform", "#a78bfa"],
+                  ["🎯 DIFFICULTY",[["all","All"],["easy","Relaxed"],["medium","Medium"],["hard","Challenging"]], "difficulty", "#fbbf24"],
+                  ["👥 PLAY STYLE",[["all","All"],["singleplayer","Solo"],["multiplayer","Multi"],["co-op","Co-op"]], "multiplayer", "#34d399"],
+                ].map(([label, opts, key, color])=>(
+                  <div key={key}>
+                    <div style={{fontSize:9,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:6}}>{label}</div>
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      {opts.map(([v,l])=>{
+                        const active=filters[key]===v;
+                        return <button key={v} onClick={()=>setFilters(f=>({...f,[key]:v}))} style={{background:active?(color==="white"?"white":color+"25"):"rgba(255,255,255,0.05)",color:active?(color==="white"?"#080810":color):"rgba(255,255,255,0.45)",border:`1px solid ${active?(color==="white"?"white":color+"70"):"rgba(255,255,255,0.1)"}`,borderRadius:100,padding:"5px 12px",cursor:"pointer",fontSize:10,fontFamily:"'Space Mono',monospace",transition:"all .2s",fontWeight:active?700:400}}>{l}</button>;
+                      })}
+                    </div>
+                  </div>
+                ))}
+                <button onClick={()=>{setFilters(DEFAULT_FILTERS);setPage(1);}} style={{alignSelf:"flex-start",background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:9,padding:"6px 13px",color:"#f87171",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>✕ Clear filters</button>
+              </div>
+            )}
+          </div>
+        )}
 
-        {/* Sort & Count */}
-        {hasLoaded && (
-          <div style={{ maxWidth: 900, margin: "0 auto 14px", padding: "0 16px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontFamily: "'Space Mono', monospace" }}>
-              {totalCount.toLocaleString()} games
-              {activeFilterCount > 0 && <span style={{ color: "#a78bfa", marginLeft: 6 }}>· {activeFilterCount} filter{activeFilterCount > 1 ? "s" : ""} active</span>}
+        {/* Locked filter teaser for expired */}
+        {!access && status==="expired" && (
+          <div style={{maxWidth:900,margin:"0 auto 14px",padding:"0 16px"}}>
+            <div onClick={()=>setShowPaywall(true)} style={{background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.25)",borderRadius:13,padding:"12px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
+              <span style={{fontSize:18}}>🔒</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:12,color:"#f59e0b",fontFamily:"'Space Mono',monospace",fontWeight:700}}>Filters locked — Unlock for {PRICE}</div>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace"}}>Genre, difficulty, multiplayer, price filters + unlimited searches</div>
+              </div>
+              <span style={{fontSize:11,color:"#f59e0b",fontFamily:"'Space Mono',monospace",whiteSpace:"nowrap"}}>Unlock →</span>
             </div>
-            <div style={{ display: "flex", gap: 5 }}>
-              {[["rating","Top Rated"],["metacritic","Metacritic"],["newest","Newest"],["popular","Popular"]].map(([v,l]) => (
-                <button key={v} onClick={() => { setSortBy(v); setPage(1); }}
-                  style={{ background: sortBy === v ? "rgba(167,139,250,0.2)" : "transparent", color: sortBy === v ? "#a78bfa" : "rgba(255,255,255,0.3)", border: `1px solid ${sortBy === v ? "#a78bfa50" : "rgba(255,255,255,0.07)"}`, borderRadius: 7, padding: "4px 9px", cursor: "pointer", fontSize: 10, fontFamily: "'Space Mono', monospace", transition: "all 0.2s" }}>
-                  {l}
-                </button>
+          </div>
+        )}
+
+        {/* Sort & count */}
+        {hasLoaded && (
+          <div style={{maxWidth:900,margin:"0 auto 12px",padding:"0 16px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace"}}>{total.toLocaleString()} games</div>
+            <div style={{display:"flex",gap:5}}>
+              {[["rating","Top Rated"],["metacritic","Metacritic"],["newest","Newest"],["popular","Popular"]].map(([v,l])=>(
+                <button key={v} onClick={()=>{setSortBy(v);setPage(1);}} style={{background:sortBy===v?"rgba(167,139,250,0.2)":"transparent",color:sortBy===v?"#a78bfa":"rgba(255,255,255,0.3)",border:`1px solid ${sortBy===v?"#a78bfa50":"rgba(255,255,255,0.07)"}`,borderRadius:7,padding:"4px 9px",cursor:"pointer",fontSize:10,fontFamily:"'Space Mono',monospace",transition:"all .2s"}}>{l}</button>
               ))}
             </div>
           </div>
         )}
 
         {/* Content */}
-        <div style={{ maxWidth: 900, margin: "0 auto", padding: "0 16px" }}>
+        <div style={{maxWidth:900,margin:"0 auto",padding:"0 16px"}}>
           {!hasLoaded && !loading && (
-            <div style={{ textAlign: "center", padding: "50px 20px" }}>
-              <div style={{ fontSize: 44, marginBottom: 14 }}>🎮</div>
-              <h2 style={{ color: "white", fontFamily: "'Bitter', serif", margin: "0 0 8px" }}>500,000+ Games Ready</h2>
-              <p style={{ color: "rgba(255,255,255,0.4)", fontFamily: "'Space Mono', monospace", fontSize: 11, marginBottom: 24 }}>Use the filters above or browse everything</p>
-              <button onClick={handleInitialLoad} style={{ background: "white", color: "#080810", border: "none", borderRadius: 12, padding: "13px 28px", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "'Space Mono', monospace" }}>Browse Top Rated →</button>
+            <div style={{textAlign:"center",padding:"48px 20px"}}>
+              <div style={{fontSize:42,marginBottom:12}}>🎮</div>
+              <h2 style={{color:"white",fontFamily:"'Bitter',serif",margin:"0 0 8px"}}>500,000+ Games Ready</h2>
+              <p style={{color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace",fontSize:11,marginBottom:22}}>Search or browse the full database</p>
+              <Btn onClick={()=>fetchGames("",filters,"rating",1)} variant="primary" style={{padding:"12px 26px",fontSize:12}}>Browse Top Rated →</Btn>
             </div>
           )}
 
           {loading && (
-            <div style={{ textAlign: "center", padding: "50px 20px" }}>
-              <div style={{ display: "inline-flex", gap: 6 }}>
-                {[0,1,2].map(i => <div key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: "#a78bfa", animation: "pulse 1.2s ease infinite", animationDelay: `${i * 0.2}s` }} />)}
+            <div style={{textAlign:"center",padding:"48px 20px"}}>
+              <div style={{display:"inline-flex",gap:6}}>
+                {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:"#a78bfa",animation:"pulse 1.2s ease infinite",animationDelay:`${i*.2}s`}}/>)}
               </div>
-              <div style={{ color: "rgba(255,255,255,0.3)", fontFamily: "'Space Mono', monospace", fontSize: 11, marginTop: 10 }}>Searching the database...</div>
+              <div style={{color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",fontSize:11,marginTop:10}}>Searching the database...</div>
             </div>
           )}
 
-          {error && (
-            <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 12, padding: 18, marginBottom: 18, color: "#fca5a5", fontFamily: "'Space Mono', monospace", fontSize: 11, lineHeight: 1.7 }}>⚠️ {error}</div>
-          )}
+          {error && <div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:12,padding:16,marginBottom:16,color:"#fca5a5",fontFamily:"'Space Mono',monospace",fontSize:11,lineHeight:1.7}}>⚠️ {error}</div>}
 
-          {!loading && games.length > 0 && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: 14, marginBottom: 28 }}>
-              {games.map((g, i) => (
-                <div key={g.id} className="card-anim" style={{ animationDelay: `${i * 0.04}s` }}>
-                  <GameCard game={g} onClick={setSelected} />
+          {!loading && games.length>0 && (
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:13,marginBottom:26}}>
+              {games.map((g,i)=>(
+                <div key={g.id} className="card-anim" style={{animationDelay:`${i*.04}s`}}>
+                  <GameCard game={g} onClick={setSelected} locked={false}/>
                 </div>
               ))}
             </div>
           )}
 
-          {!loading && hasLoaded && games.length === 0 && !error && (
-            <div style={{ textAlign: "center", padding: 40, color: "rgba(255,255,255,0.3)", fontFamily: "'Space Mono', monospace", fontSize: 11 }}>
-              No games found. Try adjusting your filters.
-            </div>
+          {!loading && hasLoaded && games.length===0 && !error && (
+            <div style={{textAlign:"center",padding:36,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",fontSize:11}}>No games found. Try adjusting your filters.</div>
           )}
 
-          {hasLoaded && !loading && totalCount > 20 && (
-            <div style={{ display: "flex", justifyContent: "center", gap: 10, alignItems: "center", paddingBottom: 40 }}>
-              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: page === 1 ? "rgba(255,255,255,0.2)" : "white", borderRadius: 9, padding: "8px 14px", cursor: page === 1 ? "default" : "pointer", fontSize: 11, fontFamily: "'Space Mono', monospace" }}>← Prev</button>
-              <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 11, fontFamily: "'Space Mono', monospace" }}>Page {page} of {Math.min(Math.ceil(totalCount / 20), 500)}</span>
-              <button onClick={() => setPage(p => p + 1)}
-                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "white", borderRadius: 9, padding: "8px 14px", cursor: "pointer", fontSize: 11, fontFamily: "'Space Mono', monospace" }}>Next →</button>
+          {hasLoaded && !loading && total>20 && (
+            <div style={{display:"flex",justifyContent:"center",gap:10,alignItems:"center",paddingBottom:36}}>
+              <Btn onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1} variant="ghost" style={{padding:"7px 13px",fontSize:11,borderRadius:8,opacity:page===1?.3:1}}>← Prev</Btn>
+              <span style={{color:"rgba(255,255,255,0.3)",fontSize:11,fontFamily:"'Space Mono',monospace"}}>Page {page} of {Math.min(Math.ceil(total/20),500)}</span>
+              <Btn onClick={()=>setPage(p=>p+1)} variant="ghost" style={{padding:"7px 13px",fontSize:11,borderRadius:8}}>Next →</Btn>
             </div>
           )}
         </div>
 
-        <div style={{ textAlign: "center", paddingBottom: 28, color: "rgba(255,255,255,0.12)", fontSize: 9, letterSpacing: 2, fontFamily: "'Space Mono', monospace" }}>
+        <div style={{textAlign:"center",paddingBottom:26,color:"rgba(255,255,255,0.12)",fontSize:9,letterSpacing:2,fontFamily:"'Space Mono',monospace"}}>
           WORTH MY TIME · RAWG.IO · HLTB · YOUR SCORES
         </div>
       </div>
 
-      <Modal game={selected} onClose={() => setSelected(null)} />
+      {/* Modals */}
+      {status==="expired" && !showPaywall && games.length===0 && hasLoaded && <LockedOverlay onUpgrade={()=>setShowPaywall(true)}/>}
+      {showPaywall && <PaywallModal user={user} onClose={()=>setShowPaywall(false)} onSuccess={handlePaid}/>}
+      <GameModal game={selected} onClose={()=>setSelected(null)}/>
     </>
   );
 }
