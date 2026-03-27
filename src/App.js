@@ -181,6 +181,7 @@ function CommunityReviews({ game, currentUser }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [postAnon, setPostAnon] = useState(false);
 
   useEffect(() => {
     loadReviews(game.id).then(r => {
@@ -198,7 +199,7 @@ function CommunityReviews({ game, currentUser }) {
     setSubmitting(true);
     const review = {
       userEmail: currentUser.email,
-      userName: currentUser.name,
+      userName: postAnon ? "Anonymous" : currentUser.name,
       rating: myRating,
       text: myReview.trim(),
       timeSpent: myTime,
@@ -259,6 +260,22 @@ function CommunityReviews({ game, currentUser }) {
                 borderRadius:8,padding:"8px 10px",color:"white",fontSize:11,
                 fontFamily:"'Space Mono',monospace",boxSizing:"border-box"}}/>
           </div>
+          {/* Anonymous toggle */}
+          <div onClick={()=>setPostAnon(!postAnon)}
+            style={{display:"flex",alignItems:"center",gap:10,background:postAnon?"rgba(167,139,250,0.12)":"rgba(255,255,255,0.03)",
+              border:`1px solid ${postAnon?"rgba(167,139,250,0.4)":"rgba(255,255,255,0.08)"}`,
+              borderRadius:10,padding:"10px 12px",cursor:"pointer",marginBottom:12,transition:"all .2s"}}>
+            <div style={{width:18,height:18,borderRadius:"50%",border:`2px solid ${postAnon?"#a78bfa":"rgba(255,255,255,0.2)"}`,
+              background:postAnon?"#a78bfa":"transparent",display:"flex",alignItems:"center",
+              justifyContent:"center",fontSize:10,color:"white",flexShrink:0,transition:"all .2s"}}>
+              {postAnon?"✓":""}
+            </div>
+            <div>
+              <div style={{fontSize:11,color:"white",fontFamily:"'Space Mono',monospace",fontWeight:700}}>Post anonymously</div>
+              <div style={{fontSize:9,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace"}}>Your name won't be shown — review posts as "Anonymous"</div>
+            </div>
+          </div>
+
           <div style={{marginBottom:12}}>
             <div style={{fontSize:9,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",marginBottom:6}}>YOUR THOUGHTS</div>
             <textarea placeholder="Was it worth your time? Would you recommend it to a busy person?" value={myReview}
@@ -294,10 +311,11 @@ function CommunityReviews({ game, currentUser }) {
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <div style={{width:26,height:26,borderRadius:"50%",
-                  background:`hsl(${r.userName?.charCodeAt(0)*7%360},60%,45%)`,
+                  background:r.userName==="Anonymous"?"rgba(255,255,255,0.15)":`hsl(${r.userName?.charCodeAt(0)*7%360},60%,45%)`,
                   display:"flex",alignItems:"center",justifyContent:"center",
-                  fontSize:11,fontWeight:700,color:"white",fontFamily:"'Space Mono',monospace",flexShrink:0}}>
-                  {r.userName?.[0]?.toUpperCase()||"?"}
+                  fontSize:r.userName==="Anonymous"?14:11,fontWeight:700,color:"white",
+                  fontFamily:"'Space Mono',monospace",flexShrink:0}}>
+                  {r.userName==="Anonymous" ? "👤" : r.userName?.[0]?.toUpperCase()||"?"}
                 </div>
                 <div>
                   <div style={{fontSize:11,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{r.userName}</div>
