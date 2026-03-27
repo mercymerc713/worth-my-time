@@ -387,8 +387,78 @@ function AuthScreen({ onLogin }) {
   const [email, setEmail] = useState("");
   const [pass, setPass]   = useState("");
   const [err, setErr]     = useState("");
+  const [success, setSuccess] = useState("");
+  const [resetCode, setResetCode] = useState("");
+  const [enteredCode, setEnteredCode] = useState("");
+  const [newPass, setNewPass] = useState("");
+  const [resetStep, setResetStep] = useState(1); // 1=enter email, 2=enter code, 3=new password
 
   const validateEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e.trim());
+
+  const handleForgotPassword = async () => {
+    setErr(""); setSuccess("");
+    if (!email) { setErr("Please enter your email address."); return; }
+    if (!validateEmail(email)) { setErr("Please enter a valid email address."); return; }
+    const emailKey = email.toLowerCase().trim();
+    const account = await store.get(`wmt_account_${emailKey}`);
+    if (!account) { setErr("No account found with this email."); return; }
+    // Generate 6-digit code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    // Store code with 15min expiry
+    await store.set(`wmt_reset_${emailKey}`, { code, expiresAt: Date.now() + 15 * 60 * 1000 });
+    // Send email via EmailJS
+    try {
+      await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          service_id: "YOUR_EMAILJS_SERVICE_ID",
+          template_id: "YOUR_EMAILJS_TEMPLATE_ID",
+          user_id: "YOUR_EMAILJS_PUBLIC_KEY",
+          template_params: {
+            to_email: email,
+            to_name: account.name,
+            reset_code: code,
+            app_name: "Worth My Time",
+          }
+        })
+      });
+      setSuccess(`A reset code has been sent to ${email}. Check your inbox.`);
+      setResetStep(2);
+    } catch {
+      // If EmailJS not configured, show code directly for testing
+      setSuccess(`Your reset code is: ${code} (valid for 15 minutes)`);
+      setResetStep(2);
+    }
+  };
+
+  const handleVerifyCode = async () => {
+    setErr(""); setSuccess("");
+    if (!enteredCode) { setErr("Please enter the reset code."); return; }
+    const emailKey = email.toLowerCase().trim();
+    const stored = await store.get(`wmt_reset_${emailKey}`);
+    if (!stored) { setErr("Reset code expired. Please request a new one."); return; }
+    if (Date.now() > stored.expiresAt) { setErr("Reset code has expired. Please request a new one."); await store.del(`wmt_reset_${emailKey}`); return; }
+    if (enteredCode.trim() !== stored.code) { setErr("Incorrect code. Please try again."); return; }
+    setSuccess("Code verified! Please enter your new password.");
+    setResetStep(3);
+  };
+
+  const handleResetPassword = async () => {
+    setErr(""); setSuccess("");
+    if (!newPass || newPass.length < 8) { setErr("Password must be at least 8 characters."); return; }
+    const emailKey = email.toLowerCase().trim();
+    const account = await store.get(`wmt_account_${emailKey}`);
+    if (!account) { setErr("Account not found."); return; }
+    // Update password
+    await store.set(`wmt_account_${emailKey}`, { ...account, passwordHash: btoa(newPass) });
+    await store.del(`wmt_reset_${emailKey}`);
+    setSuccess("Password reset successfully! You can now sign in.");
+    setMode("login");
+    setResetStep(1);
+    setEnteredCode("");
+    setNewPass("");
+  };
   const validatePassword = (p) => p.length >= 8;
 
   const submit = async () => {
@@ -454,32 +524,98 @@ function AuthScreen({ onLogin }) {
         </div>
 
         <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.09)",borderRadius:20,padding:26}}>
-          {/* Mode toggle */}
-          <div style={{display:"flex",background:"rgba(0,0,0,0.4)",borderRadius:11,padding:3,marginBottom:22,gap:3}}>
-            {["signup","login"].map(m=>(
-              <button key={m} onClick={()=>{setMode(m);setErr("");}}
-                style={{flex:1,background:mode===m?"white":"transparent",color:mode===m?"#07070f":"rgba(255,255,255,0.4)",border:"none",borderRadius:9,padding:"9px",cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"'Space Mono',monospace",transition:"all .2s"}}>
-                {m==="signup"?"Create Account":"Sign In"}
+
+          {mode !== "forgot" && (
+            <div style={{display:"flex",background:"rgba(0,0,0,0.4)",borderRadius:11,padding:3,marginBottom:22,gap:3}}>
+              {["signup","login"].map(m=>(
+                <button key={m} onClick={()=>{setMode(m);setErr("");setSuccess("");setResetStep(1);}}
+                  style={{flex:1,background:mode===m?"white":"transparent",color:mode===m?"#07070f":"rgba(255,255,255,0.4)",border:"none",borderRadius:9,padding:"9px",cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"'Space Mono',monospace",transition:"all .2s"}}>
+                  {m==="signup"?"Create Account":"Sign In"}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* SIGN UP / SIGN IN */}
+          {mode !== "forgot" && (
+            <>
+              <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                {mode==="signup" && <Input placeholder="Your name" value={name} onChange={e=>setName(e.target.value)}/>}
+                <Input placeholder="Email address" value={email} onChange={e=>setEmail(e.target.value)}/>
+                <Input placeholder="Password" type="password" value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+              </div>
+              {err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>⚠ {err}</div>}
+              {success && <div style={{color:"#4ade80",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>✓ {success}</div>}
+              <Btn onClick={submit} variant="purple" style={{width:"100%",marginTop:16}}>
+                {mode==="signup" ? "Create Account & Start Trial →" : "Sign In →"}
+              </Btn>
+              {mode==="login" && (
+                <button onClick={()=>{setMode("forgot");setErr("");setSuccess("");setResetStep(1);}}
+                  style={{display:"block",margin:"12px auto 0",background:"none",border:"none",color:"rgba(255,255,255,0.35)",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",textDecoration:"underline"}}>
+                  Forgot your password?
+                </button>
+              )}
+              {mode==="signup" && (
+                <div style={{marginTop:12,fontSize:10,color:"rgba(255,255,255,0.25)",fontFamily:"'Space Mono',monospace",textAlign:"center",lineHeight:1.6}}>
+                  Password must be at least 8 characters<br/>
+                  7 days free · No credit card required · {PRICE} one-time after trial
+                </div>
+              )}
+            </>
+          )}
+
+          {/* FORGOT PASSWORD FLOW */}
+          {mode === "forgot" && (
+            <div>
+              <div style={{textAlign:"center",marginBottom:20}}>
+                <div style={{fontSize:28,marginBottom:8}}>🔑</div>
+                <h3 style={{margin:"0 0 4px",color:"white",fontFamily:"'Bitter',serif",fontSize:18}}>Reset Password</h3>
+                <p style={{margin:0,fontSize:11,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace"}}>
+                  {resetStep===1 && "Enter your email to receive a reset code"}
+                  {resetStep===2 && "Enter the 6-digit code sent to your email"}
+                  {resetStep===3 && "Enter your new password"}
+                </p>
+              </div>
+
+              {/* Step indicator */}
+              <div style={{display:"flex",gap:6,marginBottom:20}}>
+                {[1,2,3].map(s=>(
+                  <div key={s} style={{flex:1,height:3,borderRadius:3,background:resetStep>=s?"#a78bfa":"rgba(255,255,255,0.1)",transition:"background .3s"}}/>
+                ))}
+              </div>
+
+              {resetStep===1 && (
+                <>
+                  <Input placeholder="Your email address" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleForgotPassword()}/>
+                  {err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>⚠ {err}</div>}
+                  {success && <div style={{color:"#4ade80",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>✓ {success}</div>}
+                  <Btn onClick={handleForgotPassword} variant="purple" style={{width:"100%",marginTop:14}}>Send Reset Code →</Btn>
+                </>
+              )}
+
+              {resetStep===2 && (
+                <>
+                  {success && <div style={{color:"#4ade80",fontSize:11,fontFamily:"'Space Mono',monospace",marginBottom:12}}>✓ {success}</div>}
+                  <Input placeholder="Enter 6-digit code" value={enteredCode} onChange={e=>setEnteredCode(e.target.value.replace(/\D/g,"").slice(0,6))} onKeyDown={e=>e.key==="Enter"&&handleVerifyCode()}/>
+                  {err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>⚠ {err}</div>}
+                  <Btn onClick={handleVerifyCode} variant="purple" style={{width:"100%",marginTop:14}}>Verify Code →</Btn>
+                  <button onClick={()=>{setResetStep(1);setErr("");setSuccess("");}} style={{display:"block",margin:"10px auto 0",background:"none",border:"none",color:"rgba(255,255,255,0.35)",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>← Resend code</button>
+                </>
+              )}
+
+              {resetStep===3 && (
+                <>
+                  {success && <div style={{color:"#4ade80",fontSize:11,fontFamily:"'Space Mono',monospace",marginBottom:12}}>✓ {success}</div>}
+                  <Input placeholder="New password (min 8 characters)" type="password" value={newPass} onChange={e=>setNewPass(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleResetPassword()}/>
+                  {err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>⚠ {err}</div>}
+                  <Btn onClick={handleResetPassword} variant="purple" style={{width:"100%",marginTop:14}}>Reset Password →</Btn>
+                </>
+              )}
+
+              <button onClick={()=>{setMode("login");setErr("");setSuccess("");setResetStep(1);}}
+                style={{display:"block",margin:"14px auto 0",background:"none",border:"none",color:"rgba(255,255,255,0.3)",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
+                ← Back to Sign In
               </button>
-            ))}
-          </div>
-
-          <div style={{display:"flex",flexDirection:"column",gap:12}}>
-            {mode==="signup" && <Input placeholder="Your name" value={name} onChange={e=>setName(e.target.value)}/>}
-            <Input placeholder="Email address" value={email} onChange={e=>setEmail(e.target.value)}/>
-            <Input placeholder="Password" type="password" value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
-          </div>
-
-          {err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>⚠ {err}</div>}
-
-          <Btn onClick={submit} variant="purple" style={{width:"100%",marginTop:16}}>
-            {mode==="signup" ? "Create Account & Start Trial →" : "Sign In →"}
-          </Btn>
-
-          {mode==="signup" && (
-            <div style={{marginTop:12,fontSize:10,color:"rgba(255,255,255,0.25)",fontFamily:"'Space Mono',monospace",textAlign:"center",lineHeight:1.6}}>
-              Password must be at least 8 characters<br/>
-              7 days free · No credit card required · {PRICE} one-time after trial
             </div>
           )}
         </div>
