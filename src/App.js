@@ -1259,7 +1259,7 @@ export default function App() {
         if (!res.ok) throw new Error();
         const data = await res.json();
         let results = (data.results || []).filter(g =>
-          g.background_image && g.released && g.released <= todayDate
+          g.background_image
         );
         // Score and sort by relevance
         const ql = q.trim().toLowerCase();
@@ -1303,15 +1303,12 @@ export default function App() {
       if (!res.ok) throw new Error();
       const data = await res.json();
       let results = data.results||[];
-
-      // Filter out unreleased games and games with no useful data
       const today = new Date().toISOString().split("T")[0];
+
+      // Filter out unreleased games and games with no cover image
       results = results.filter(g => {
-        if (!g.released) return false;                    // no release date
-        if (g.released > today) return false;             // not released yet
-        if (!g.background_image) return false;            // no cover image
-        if (!g.genres || g.genres.length === 0) return false; // no genre info
-        if ((g.ratings_count || 0) < 5) return false;    // too few ratings to be useful
+        if (!g.released || g.released > today) return false;
+        if (!g.background_image) return false;
         return true;
       });
 
@@ -1348,9 +1345,12 @@ export default function App() {
 
   useEffect(() => {
     if (!user || !access) return;
-    if (!hasLoaded && !search) return;
+    if (!hasLoaded && !search && search !== "") return;
     clearTimeout(debRef.current);
-    debRef.current = setTimeout(()=>{ setPage(1); fetchGames(search,filters,sortBy,1); }, 400);
+    debRef.current = setTimeout(() => {
+      setPage(1);
+      fetchGames(search, filters, sortBy, 1);
+    }, search ? 400 : 100); // faster reload when clearing search
   }, [search, filters, sortBy, user]);
 
   useEffect(() => { if (hasLoaded && user && access) fetchGames(search,filters,sortBy,page); }, [page]);
@@ -1407,8 +1407,6 @@ export default function App() {
       results = results.filter(g => {
         if (!g.released || g.released > today) return false;
         if (!g.background_image) return false;
-        if (!g.genres || g.genres.length === 0) return false;
-        if ((g.ratings_count || 0) < 5) return false;
         return true;
       });
       // Sort by release date descending (newest first)
@@ -1555,7 +1553,7 @@ export default function App() {
           {error && <div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:12,padding:16,marginBottom:16,color:"#fca5a5",fontFamily:"'Space Mono',monospace",fontSize:11,lineHeight:1.7}}>⚠️ {error}</div>}
 
           {!loading && games.length>0 && (
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:13,marginBottom:26}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:13,marginBottom:26}}>
               {games.map((g,i)=>(
                 <div key={g.id} className="card-anim" style={{animationDelay:`${i*.04}s`}}>
                   <GameCard game={g} onClick={setSelected} locked={false}/>
