@@ -707,12 +707,22 @@ function AuthScreen({ onLogin }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function GameCard({ game, onClick, locked }) {
   const [hov, setHov] = useState(false);
-  const scores = computeScores(game);
-  const color  = accentOf(game.genres);
-  const cat    = sessionCatOf(game.genres);
-  const catLbl = {short:"⚡ Quick",medium:"🕐 Mid",long:"🏔 Long"}[cat];
+  if (!game) return null;
+  let scores, color, cat, catLbl;
+  try {
+    scores = computeScores(game);
+    color  = accentOf(game.genres);
+    cat    = sessionCatOf(game.genres);
+    catLbl = {short:"⚡ Quick",medium:"🕐 Mid",long:"🏔 Long"}[cat] || "🎮 Game";
+  } catch {
+    scores = { t:70, a:70, w:70, hltb:{ session:"30–60 min", main:"10h", complete:"25h" }, difficulty:"Medium", esrb:"Not Rated" };
+    color  = "#a78bfa";
+    catLbl = "🎮 Game";
+  }
 
 
+
+  if (!game || !game.id) return null;
 
   return (
     <div onClick={()=>onClick(game)} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
@@ -721,7 +731,7 @@ function GameCard({ game, onClick, locked }) {
         transform:hov?"translateY(-4px) scale(1.01)":"translateY(0) scale(1)",
         transition:"all .28s cubic-bezier(.4,0,.2,1)",
         boxShadow:hov?`0 20px 60px ${color}30`:"0 2px 12px rgba(0,0,0,0.4)",
-        background:theme.card,filter:locked?"blur(2px) brightness(0.5)":"none"}}>
+        background:"#0d0d18",filter:locked?"blur(2px) brightness(0.5)":"none"}}>
       <div style={{position:"relative",height:125,overflow:"hidden",background:"#1a1a2e"}}>
         {game.background_image
           ? <img src={game.background_image} alt={game.name} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.8,transition:"transform .4s",transform:hov?"scale(1.05)":"scale(1)"}}/>
