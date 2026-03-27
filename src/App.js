@@ -1242,33 +1242,63 @@ export default function App() {
     setLoading(true); setError("");
     try {
       const todayDate = new Date().toISOString().split("T")[0];
+
+      // ── SEARCH MODE: pure title search, no filters ──────────────────────
+      if (q && q.trim().length > 0) {
+        const p = new URLSearchParams({
+          key: RAWG_KEY,
+          page_size: 40,
+          page: 1,
+          search: q.trim(),
+          search_precise: "true",
+        });
+        if (f.platform !== "all" && PLATFORM_MAP[f.platform]) {
+          p.set("platforms", PLATFORM_MAP[f.platform]);
+        }
+        const res = await fetch(`${RAWG_BASE}/games?${p}`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let results = (data.results || []).filter(g =>
+          g.background_image && g.released && g.released <= todayDate
+        );
+        // Score and sort by relevance
+        const ql = q.trim().toLowerCase();
+        results = results.sort((a, b) => {
+          const scoreMatch = (name) => {
+            const n = (name||"").toLowerCase();
+            if (n === ql) return 100;
+            if (n.startsWith(ql)) return 80;
+            if (n.includes(` ${ql}`)) return 60;
+            if (n.includes(ql)) return 40;
+            return (b.ratings_count||0) - (a.ratings_count||0);
+          };
+          return scoreMatch(b.name) - scoreMatch(a.name);
+        });
+        setGames(results);
+        setTotal(data.count || 0);
+        setHasLoaded(true);
+        setLoading(false);
+        return;
+      }
+
+      // ── BROWSE MODE: apply all filters ──────────────────────────────────
       const p = new URLSearchParams({
         key: RAWG_KEY,
         page_size: 20,
         page: pg,
-        ordering: SORT_MAP[sort] || "-rating",
+        ordering: SORT_MAP[sort] || "-released",
         dates: `2000-01-01,${todayDate}`,
         exclude_additions: "true",
       });
-      if (q) {
-        // When searching — only apply platform filter, ignore all others
-        // so the user always finds what they're looking for
-        p.set("search", q);
-        p.set("search_precise", "true");
-        p.set("page_size", "40");
-        if (f.platform!=="all" && PLATFORM_MAP[f.platform]) p.set("platforms", PLATFORM_MAP[f.platform]);
-      } else {
-        // When browsing (no search) — apply all active filters
-        if (f.platform!=="all" && PLATFORM_MAP[f.platform]) p.set("platforms", PLATFORM_MAP[f.platform]);
-        const gs=[];
-        if (f.time==="short") gs.push("puzzle,arcade,card-games,fighting,racing,sports");
-        if (f.time==="long")  gs.push("role-playing-games-rpg,strategy,simulation");
-        if (f.genre!=="all" && GENRE_MAP[f.genre]) gs.push(GENRE_MAP[f.genre]);
-        if (gs.length) p.set("genres", gs.join(","));
-        if (f.multiplayer==="singleplayer") p.set("tags","singleplayer");
-        if (f.multiplayer==="multiplayer")  p.set("tags","multiplayer");
-        if (f.multiplayer==="co-op")        p.set("tags","co-op");
-      }
+      if (f.platform !== "all" && PLATFORM_MAP[f.platform]) p.set("platforms", PLATFORM_MAP[f.platform]);
+      const gs = [];
+      if (f.time === "short") gs.push("puzzle,arcade,card-games,fighting,racing,sports");
+      if (f.time === "long")  gs.push("role-playing-games-rpg,strategy,simulation");
+      if (f.genre !== "all" && GENRE_MAP[f.genre]) gs.push(GENRE_MAP[f.genre]);
+      if (gs.length) p.set("genres", gs.join(","));
+      if (f.multiplayer === "singleplayer") p.set("tags", "singleplayer");
+      if (f.multiplayer === "multiplayer")  p.set("tags", "multiplayer");
+      if (f.multiplayer === "co-op")        p.set("tags", "co-op");
       const res = await fetch(`${RAWG_BASE}/games?${p}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
