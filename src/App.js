@@ -804,7 +804,7 @@ function GameModal({ game, onClose }) {
             <ScoreRing value={scores.w} label="Worth It"      color={color} size={68}/>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
-            {[["⏱ Session",scores.hltb.session],["📖 Story",scores.hltb.main],["🏆 100%",scores.hltb.complete],["🎯 Difficulty",scores.difficulty],["⭐ Rating",game.rating?`${game.rating}/5`:"N/A"],["📊 Metacritic",game.metacritic||"N/A"],["🔞 Age",scores.esrb],["📅 Released",game.released||"N/A"]].map(([k,v])=>(
+            {[["⏱ Session",scores.hltb.session],["📖 Story",scores.hltb.main],["🏆 100%",scores.hltb.complete],["🎯 Difficulty",scores.difficulty],["⭐ Rating",game.rating?`${game.rating.toFixed(1)}/5`:"Unrated"],["📊 Metacritic",game.metacritic||"No score"],["🔞 Age",scores.esrb==="Not Rated"?"All ages":scores.esrb],["📅 Released",game.released?new Date(game.released).toLocaleDateString("en-US",{year:"numeric",month:"short"}):"Unknown"]].map(([k,v])=>(
               <div key={k} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"9px 12px"}}>
                 <div style={{fontSize:9,color:"rgba(255,255,255,0.28)",fontFamily:"'Space Mono',monospace",marginBottom:3}}>{k}</div>
                 <div style={{fontSize:12,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{v}</div>
@@ -861,7 +861,7 @@ function LockedOverlay({ onUpgrade }) {
 // ─────────────────────────────────────────────────────────────────────────────
 const DEFAULT_FILTERS = {time:"all",genre:"all",platform:"all",difficulty:"all",multiplayer:"all",price:"all"};
 const PLATFORM_MAP = {all:"",pc:"4",playstation:"187",xbox:"186",nintendo:"7",mobile:"21,3"};
-const SORT_MAP     = {rating:"-rating",metacritic:"-metacritic",newest:"-released",popular:"-added"};
+const SORT_MAP     = {newest:"-released",rating:"-rating",metacritic:"-metacritic",popular:"-added"};
 
 export default function App() {
   const [user, setUser]       = useState(null);
@@ -872,7 +872,7 @@ export default function App() {
   const [error, setError]     = useState("");
   const [search, setSearch]   = useState("");
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [sortBy, setSortBy]   = useState("rating");
+  const [sortBy, setSortBy]   = useState("newest");
   const [selected, setSelected] = useState(null);
   const [page, setPage]       = useState(1);
   const [total, setTotal]     = useState(0);
@@ -904,10 +904,17 @@ export default function App() {
   const fetchGames = useCallback(async (q, f, sort, pg) => {
     setLoading(true); setError("");
     try {
-      const p = new URLSearchParams({ key:RAWG_KEY, page_size:20, page:pg, ordering:SORT_MAP[sort]||"-rating" });
+      const todayDate = new Date().toISOString().split("T")[0];
+      const p = new URLSearchParams({
+        key: RAWG_KEY,
+        page_size: 20,
+        page: pg,
+        ordering: SORT_MAP[sort] || "-rating",
+        dates: `2000-01-01,${todayDate}`,
+        exclude_additions: "true",
+      });
       if (q) {
         p.set("search", q);
-        p.set("search_exact", "false");
         p.set("search_precise", "true");
       }
       if (f.platform!=="all" && PLATFORM_MAP[f.platform]) p.set("platforms", PLATFORM_MAP[f.platform]);
@@ -923,7 +930,25 @@ export default function App() {
       if (!res.ok) throw new Error();
       const data = await res.json();
       let results = data.results||[];
-      // Put exact/closest title matches first when searching
+
+      // Filter out unreleased games and games with no useful data
+      const today = new Date().toISOString().split("T")[0];
+      results = results.filter(g => {
+        if (!g.released) return false;                    // no release date
+        if (g.released > today) return false;             // not released yet
+        if (!g.background_image) return false;            // no cover image
+        if (!g.genres || g.genres.length === 0) return false; // no genre info
+        if ((g.ratings_count || 0) < 5) return false;    // too few ratings to be useful
+        return true;
+      });
+
+      // Always sort by newest first, then put exact search matches on top
+      results = [...results].sort((a, b) => {
+        const da = new Date(a.released || "2000-01-01");
+        const db = new Date(b.released || "2000-01-01");
+        return db - da;
+      });
+
       if (q) {
         const ql = q.toLowerCase().trim();
         results = [...results].sort((a, b) => {
@@ -933,10 +958,14 @@ export default function App() {
           const bExact = bn === ql;
           const aStarts = an.startsWith(ql);
           const bStarts = bn.startsWith(ql);
+          const aContains = an.includes(ql);
+          const bContains = bn.includes(ql);
           if (aExact && !bExact) return -1;
           if (!aExact && bExact) return 1;
           if (aStarts && !bStarts) return -1;
           if (!aStarts && bStarts) return 1;
+          if (aContains && !bContains) return -1;
+          if (!aContains && bContains) return 1;
           return 0;
         });
       }
@@ -1002,7 +1031,16 @@ export default function App() {
       if (!res.ok) throw new Error();
       const data = await res.json();
       let results = data.results || [];
-      // Sort by release date descending (2026 first)
+      // Filter out unreleased and data-poor games
+      const today = new Date().toISOString().split("T")[0];
+      results = results.filter(g => {
+        if (!g.released || g.released > today) return false;
+        if (!g.background_image) return false;
+        if (!g.genres || g.genres.length === 0) return false;
+        if ((g.ratings_count || 0) < 5) return false;
+        return true;
+      });
+      // Sort by release date descending (newest first)
       results = results.sort((a, b) => {
         const da = new Date(a.released || "2000-01-01");
         const db = new Date(b.released || "2000-01-01");
@@ -1113,7 +1151,7 @@ export default function App() {
           <div style={{maxWidth:900,margin:"0 auto 12px",padding:"0 16px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
             <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace"}}>{total.toLocaleString()} games</div>
             <div style={{display:"flex",gap:5}}>
-              {[["rating","Top Rated"],["metacritic","Metacritic"],["newest","Newest"],["popular","Popular"]].map(([v,l])=>(
+              {[["newest","🆕 Newest"],["rating","⭐ Top Rated"],["metacritic","📊 Metacritic"],["popular","🔥 Popular"]].map(([v,l])=>(
                 <button key={v} onClick={()=>{setSortBy(v);setPage(1);}} style={{background:sortBy===v?"rgba(167,139,250,0.2)":"transparent",color:sortBy===v?"#a78bfa":"rgba(255,255,255,0.3)",border:`1px solid ${sortBy===v?"#a78bfa50":"rgba(255,255,255,0.07)"}`,borderRadius:7,padding:"4px 9px",cursor:"pointer",fontSize:10,fontFamily:"'Space Mono',monospace",transition:"all .2s"}}>{l}</button>
               ))}
             </div>
