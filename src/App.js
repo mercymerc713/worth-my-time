@@ -1205,6 +1205,61 @@ function GameCard({ game, onClick, locked, darkMode=true }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // MODAL
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// IMAGE UPLOAD — Supabase Storage
+// ─────────────────────────────────────────────────────────────────────────────
+async function uploadImage(file, bucket, path) {
+  try {
+    // Basic content moderation — block obvious bad filenames and check type
+    const allowed = ["image/jpeg","image/jpg","image/png","image/gif","image/webp"];
+    if (!allowed.includes(file.type)) throw new Error("Only images allowed (jpg, png, gif, webp)");
+    if (file.size > 5 * 1024 * 1024) throw new Error("Image must be under 5MB");
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${SUPABASE_KEY}`,
+        "x-upsert": "true",
+      },
+      body: formData,
+    });
+    if (!res.ok) throw new Error("Upload failed");
+    return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
+  } catch(e) {
+    throw e;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ACHIEVEMENTS SYSTEM
+// ─────────────────────────────────────────────────────────────────────────────
+const ACHIEVEMENTS = [
+  { id:"first_review",   icon:"✍️",  label:"First Review",     desc:"Wrote your first game review",        color:"#fbbf24" },
+  { id:"review_5",       icon:"📝",  label:"Critic",           desc:"Wrote 5 game reviews",                color:"#60a5fa" },
+  { id:"review_10",      icon:"🎯",  label:"Expert Critic",    desc:"Wrote 10 game reviews",               color:"#a78bfa" },
+  { id:"review_25",      icon:"🏆",  label:"Master Critic",    desc:"Wrote 25 game reviews",               color:"#f97316" },
+  { id:"first_follow",   icon:"👥",  label:"Social Gamer",     desc:"Followed another player",             color:"#34d399" },
+  { id:"follower_10",    icon:"🌟",  label:"Rising Star",      desc:"Got 10 followers",                    color:"#fbbf24" },
+  { id:"showcase",       icon:"📌",  label:"Curator",          desc:"Added games to your showcase",        color:"#e879f9" },
+  { id:"backlog",        icon:"📚",  label:"Collector",        desc:"Added 5 games to your backlog",       color:"#38bdf8" },
+  { id:"early_adopter",  icon:"🚀",  label:"Early Adopter",    desc:"Joined Worth My Time in early access",color:"#f87171" },
+];
+
+function computeAchievements(profile, reviews, followers) {
+  const earned = ["early_adopter"]; // everyone gets this
+  if (reviews.length >= 1)  earned.push("first_review");
+  if (reviews.length >= 5)  earned.push("review_5");
+  if (reviews.length >= 10) earned.push("review_10");
+  if (reviews.length >= 25) earned.push("review_25");
+  if (followers.length >= 10) earned.push("follower_10");
+  if ((profile?.showcase_games||[]).length > 0) earned.push("showcase");
+  if ((profile?.backlog||[]).length >= 5) earned.push("backlog");
+  return ACHIEVEMENTS.map(a => ({ ...a, earned: earned.includes(a.id) }));
+}
+
 // ─── Edit Profile Modal ───────────────────────────────────────────────────
 const AVATAR_EMOJIS = ["🎮","👾","🕹️","⚔️","🏆","🎯","🔥","💎","🌟","🦁","🐉","🤖","👑","🎭","🚀","⚡"];
 const AVATAR_COLORS = ["#a78bfa","#f87171","#34d399","#60a5fa","#fbbf24","#f97316","#e879f9","#38bdf8"];
@@ -1212,90 +1267,185 @@ const AVATAR_COLORS = ["#a78bfa","#f87171","#34d399","#60a5fa","#fbbf24","#f9731
 function EditProfileModal({ user, onClose, onSave }) {
   const [gamerTag, setGamerTag] = useState("");
   const [bio, setBio] = useState("");
+  const [status, setStatus] = useState("");
   const [avatarEmoji, setAvatarEmoji] = useState("🎮");
   const [avatarColor, setAvatarColor] = useState("#a78bfa");
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [bannerUrl, setBannerUrl] = useState("");
   const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
   const [err, setErr] = useState("");
+  const [tab, setTab] = useState("identity"); // identity | appearance | status
 
   useEffect(() => {
     getProfile(user.email).then(p => {
       if (p) {
         setGamerTag(p.gamer_tag || "");
         setBio(p.bio || "");
+        setStatus(p.status || "");
         setAvatarEmoji(p.avatar_emoji || "🎮");
         setAvatarColor(p.avatar_color || "#a78bfa");
+        setAvatarUrl(p.avatar_url || "");
+        setBannerUrl(p.banner_url || "");
       }
     });
   }, [user.email]);
 
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setUploadingAvatar(true); setErr("");
+    try {
+      const path = `${user.email.replace(/[@.]/g,"_")}/avatar_${Date.now()}`;
+      const url = await uploadImage(file, "avatars", path);
+      setAvatarUrl(url);
+    } catch(ex) { setErr(ex.message); }
+    setUploadingAvatar(false);
+  };
+
+  const handleBannerUpload = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setUploadingBanner(true); setErr("");
+    try {
+      const path = `${user.email.replace(/[@.]/g,"_")}/banner_${Date.now()}`;
+      const url = await uploadImage(file, "avatars", path);
+      setBannerUrl(url);
+    } catch(ex) { setErr(ex.message); }
+    setUploadingBanner(false);
+  };
+
   const handleSave = async () => {
     setErr("");
-    if (gamerTag && !/^[a-zA-Z0-9_]{3,20}$/.test(gamerTag)) {
-      setErr("Gamer tag: 3-20 chars, letters/numbers/underscores only.");
-      return;
-    }
+    if (gamerTag && !/^[a-zA-Z0-9_]{3,20}$/.test(gamerTag)) { setErr("Gamer tag: 3-20 chars, letters/numbers/underscores only."); return; }
     setSaving(true);
     if (gamerTag) {
       const existing = await getProfileByTag(gamerTag);
-      if (existing && existing.user_email !== user.email) {
-        setErr("That gamer tag is taken. Try another.");
-        setSaving(false);
-        return;
-      }
+      if (existing && existing.user_email !== user.email) { setErr("That gamer tag is taken."); setSaving(false); return; }
     }
-    const profile = { user_email: user.email, gamer_tag: gamerTag||null, bio: bio||null, avatar_emoji: avatarEmoji, avatar_color: avatarColor };
+    const profile = { user_email: user.email, gamer_tag: gamerTag||null, bio: bio||null, status: status||null, avatar_emoji: avatarEmoji, avatar_color: avatarColor, avatar_url: avatarUrl||null, banner_url: bannerUrl||null };
     await upsertProfile(profile);
     onSave(profile);
     setSaving(false);
     onClose();
   };
 
+  const inputStyle = {width:"100%",background:"rgba(0,0,0,0.4)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"11px 14px",color:"white",fontSize:12,fontFamily:"'Space Mono',monospace",boxSizing:"border-box"};
+  const labelStyle = {fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",letterSpacing:1,marginBottom:6,display:"block"};
+
   return (
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(12px)"}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:"#0d0d18",border:"1px solid rgba(167,139,250,0.3)",borderRadius:24,width:"100%",maxWidth:460,maxHeight:"90vh",overflowY:"auto",padding:24}}>
-        <h2 style={{margin:"0 0 20px",fontSize:20,fontFamily:"'Bitter',serif",color:"white"}}>Edit Profile</h2>
-        <div style={{textAlign:"center",marginBottom:20}}>
-          <div style={{width:72,height:72,borderRadius:"50%",background:avatarColor,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:32,marginBottom:12,boxShadow:`0 0 24px ${avatarColor}60`}}>{avatarEmoji}</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:6,justifyContent:"center",marginBottom:12}}>
-            {AVATAR_EMOJIS.map(e=>(
-              <button key={e} onClick={()=>setAvatarEmoji(e)} style={{width:36,height:36,borderRadius:8,border:`2px solid ${avatarEmoji===e?"white":"transparent"}`,background:"rgba(255,255,255,0.06)",cursor:"pointer",fontSize:18}}>{e}</button>
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(16px)"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0d0d18",border:"1px solid rgba(167,139,250,0.3)",borderRadius:24,width:"100%",maxWidth:500,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 0 80px rgba(167,139,250,0.2)"}}>
+
+        {/* Banner preview */}
+        <div style={{height:120,borderRadius:"24px 24px 0 0",overflow:"hidden",position:"relative",background:bannerUrl?"transparent":`linear-gradient(135deg,${avatarColor}60,#0d0d18)`,cursor:"pointer"}}
+          onClick={()=>document.getElementById("banner-upload").click()}>
+          {bannerUrl && <img src={bannerUrl} alt="banner" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+          <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.3)",display:"flex",alignItems:"center",justifyContent:"center",opacity:0,transition:"opacity .2s"}}
+            onMouseEnter={e=>e.currentTarget.style.opacity=1} onMouseLeave={e=>e.currentTarget.style.opacity=0}>
+            <span style={{color:"white",fontSize:12,fontFamily:"'Space Mono',monospace",fontWeight:700}}>
+              {uploadingBanner ? "Uploading..." : "📷 Change Banner"}
+            </span>
+          </div>
+          <input id="banner-upload" type="file" accept="image/*" onChange={handleBannerUpload} style={{display:"none"}}/>
+        </div>
+
+        <div style={{padding:"0 24px 24px",marginTop:-28}}>
+          {/* Avatar */}
+          <div style={{position:"relative",display:"inline-block",marginBottom:16}}>
+            <div style={{width:72,height:72,borderRadius:"50%",border:"4px solid #0d0d18",overflow:"hidden",background:avatarColor,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,cursor:"pointer",boxShadow:`0 0 24px ${avatarColor}60`}}
+              onClick={()=>document.getElementById("avatar-upload").click()}>
+              {avatarUrl ? <img src={avatarUrl} alt="avatar" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : avatarEmoji}
+            </div>
+            <div style={{position:"absolute",bottom:0,right:0,width:22,height:22,background:avatarColor,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,cursor:"pointer",border:"2px solid #0d0d18"}}
+              onClick={()=>document.getElementById("avatar-upload").click()}>📷</div>
+            <input id="avatar-upload" type="file" accept="image/*" onChange={handleAvatarUpload} style={{display:"none"}}/>
+            {uploadingAvatar && <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"white",fontFamily:"'Space Mono',monospace"}}>...</div>}
+          </div>
+
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace",marginBottom:6}}>
+            Images must follow community guidelines — no explicit or offensive content.
+          </div>
+
+          {/* Tabs */}
+          <div style={{display:"flex",background:"rgba(0,0,0,0.4)",borderRadius:10,padding:3,marginBottom:20,gap:3}}>
+            {[["identity","👤 Identity"],["appearance","🎨 Look"],["status","🎮 Status"]].map(([id,lbl])=>(
+              <button key={id} onClick={()=>setTab(id)}
+                style={{flex:1,background:tab===id?"rgba(167,139,250,0.2)":"transparent",color:tab===id?"#a78bfa":"rgba(255,255,255,0.4)",border:`1px solid ${tab===id?"rgba(167,139,250,0.4)":"transparent"}`,borderRadius:8,padding:"8px 4px",cursor:"pointer",fontSize:10,fontFamily:"'Space Mono',monospace",fontWeight:tab===id?700:400}}>
+                {lbl}
+              </button>
             ))}
           </div>
-          <div style={{display:"flex",gap:8,justifyContent:"center"}}>
-            {AVATAR_COLORS.map(c=>(
-              <button key={c} onClick={()=>setAvatarColor(c)} style={{width:24,height:24,borderRadius:"50%",background:c,border:`3px solid ${avatarColor===c?"white":"transparent"}`,cursor:"pointer"}}/>
-            ))}
+
+          {/* Identity tab */}
+          {tab==="identity" && (
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              <div><label style={labelStyle}>GAMER TAG</label>
+                <input placeholder="e.g. ProGamer_99 (3-20 chars)" value={gamerTag} onChange={e=>setGamerTag(e.target.value)} style={inputStyle}/>
+              </div>
+              <div><label style={labelStyle}>BIO</label>
+                <textarea placeholder="Tell the community about yourself and how you game..." value={bio} onChange={e=>setBio(e.target.value)}
+                  style={{...inputStyle,resize:"vertical",minHeight:90}}/>
+              </div>
+            </div>
+          )}
+
+          {/* Appearance tab */}
+          {tab==="appearance" && (
+            <div>
+              <label style={labelStyle}>AVATAR EMOJI (if no photo uploaded)</label>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:16}}>
+                {AVATAR_EMOJIS.map(e=>(
+                  <button key={e} onClick={()=>setAvatarEmoji(e)}
+                    style={{width:38,height:38,borderRadius:8,border:`2px solid ${avatarEmoji===e?"white":"transparent"}`,background:"rgba(255,255,255,0.06)",cursor:"pointer",fontSize:20,transition:"border .2s"}}>
+                    {e}
+                  </button>
+                ))}
+              </div>
+              <label style={labelStyle}>PROFILE COLOR</label>
+              <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                {AVATAR_COLORS.map(c=>(
+                  <button key={c} onClick={()=>setAvatarColor(c)}
+                    style={{width:32,height:32,borderRadius:"50%",background:c,border:`4px solid ${avatarColor===c?"white":"transparent"}`,cursor:"pointer",transition:"border .2s"}}/>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Status tab */}
+          {tab==="status" && (
+            <div>
+              <label style={labelStyle}>WHAT ARE YOU PLAYING RIGHT NOW?</label>
+              <input placeholder="e.g. Currently grinding Elden Ring DLC..." value={status} onChange={e=>setStatus(e.target.value)} style={inputStyle}/>
+              <div style={{fontSize:10,color:"rgba(255,255,255,0.25)",fontFamily:"'Space Mono',monospace",marginTop:8}}>This shows on your public profile so others know what you're into.</div>
+            </div>
+          )}
+
+          {err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:10}}>⚠ {err}</div>}
+
+          <div style={{display:"flex",gap:8,marginTop:20}}>
+            <button onClick={handleSave} disabled={saving}
+              style={{flex:1,background:"linear-gradient(135deg,#a78bfa,#7c3aed)",border:"none",borderRadius:11,padding:"13px",color:"white",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"'Space Mono',monospace",opacity:saving?0.7:1}}>
+              {saving?"Saving...":"Save Profile →"}
+            </button>
+            <button onClick={onClose}
+              style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:11,padding:"13px 16px",color:"rgba(255,255,255,0.5)",fontSize:12,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
+              Cancel
+            </button>
           </div>
-        </div>
-        <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          <div>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",letterSpacing:1,marginBottom:6}}>GAMER TAG</div>
-            <input placeholder="e.g. ProGamer_99" value={gamerTag} onChange={e=>setGamerTag(e.target.value)}
-              style={{width:"100%",background:"rgba(0,0,0,0.4)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"11px 14px",color:"white",fontSize:12,fontFamily:"'Space Mono',monospace",boxSizing:"border-box"}}/>
-          </div>
-          <div>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",letterSpacing:1,marginBottom:6}}>BIO</div>
-            <textarea placeholder="Tell the community about yourself..." value={bio} onChange={e=>setBio(e.target.value)}
-              style={{width:"100%",background:"rgba(0,0,0,0.4)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"11px 14px",color:"white",fontSize:12,fontFamily:"'Space Mono',monospace",resize:"vertical",minHeight:80,boxSizing:"border-box"}}/>
-          </div>
-        </div>
-        {err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>⚠ {err}</div>}
-        <div style={{display:"flex",gap:8,marginTop:18}}>
-          <button onClick={handleSave} disabled={saving} style={{flex:1,background:"linear-gradient(135deg,#a78bfa,#7c3aed)",border:"none",borderRadius:11,padding:"13px",color:"white",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>{saving?"Saving...":"Save Profile →"}</button>
-          <button onClick={onClose} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:11,padding:"13px 16px",color:"rgba(255,255,255,0.5)",fontSize:12,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>Cancel</button>
         </div>
       </div>
     </div>
   );
 }
 
-function UserProfilePage({ profileEmail, currentUser, onClose, onGameClick }) {
+function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile }) {
   const [profile, setProfile] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [followers, setFollowers] = useState([]);
   const [following, setFollowing] = useState([]);
   const [isFollowing, setIsFollowing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("activity");
   const isOwnProfile = currentUser?.email === profileEmail;
 
   useEffect(() => {
@@ -1320,68 +1470,170 @@ function UserProfilePage({ profileEmail, currentUser, onClose, onGameClick }) {
     }
   };
 
-  const displayName = profile?.gamer_tag || profileEmail.split("@")[0];
-  const avatarEmoji = profile?.avatar_emoji || "🎮";
-  const avatarColor = profile?.avatar_color || "#a78bfa";
-
   const copyLink = () => {
-    const url = `${window.location.origin}?profile=${profile?.gamer_tag || profileEmail}`;
-    navigator.clipboard.writeText(url);
+    navigator.clipboard.writeText(`${window.location.origin}?profile=${profile?.gamer_tag || profileEmail}`);
   };
 
+  const displayName = profile?.gamer_tag || profileEmail.split("@")[0];
+  const avatarColor = profile?.avatar_color || "#a78bfa";
+  const achievements = computeAchievements(profile, reviews, followers);
+  const showcase = profile?.showcase_games || [];
+  const backlog = profile?.backlog || [];
+
   if (loading) return (
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:250,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(12px)"}}>
-      <div style={{color:"white",fontFamily:"'Space Mono',monospace"}}>Loading profile...</div>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:250,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(16px)"}}>
+      <div style={{color:"white",fontFamily:"'Space Mono',monospace",fontSize:12}}>Loading profile...</div>
     </div>
   );
 
   return (
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:250,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(12px)"}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:"#0d0d18",border:`1px solid ${avatarColor}40`,borderRadius:24,width:"100%",maxWidth:520,maxHeight:"90vh",overflowY:"auto",boxShadow:`0 0 60px ${avatarColor}20`}}>
-        <div style={{height:80,background:`linear-gradient(135deg,${avatarColor}40,transparent)`,borderRadius:"24px 24px 0 0",position:"relative"}}>
-          <button onClick={onClose} style={{position:"absolute",top:12,right:12,background:"rgba(0,0,0,0.5)",border:"1px solid rgba(255,255,255,0.15)",color:"white",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:13}}>✕</button>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:250,display:"flex",alignItems:"stretch",backdropFilter:"blur(16px)",overflowY:"auto"}}>
+      <div style={{width:"100%",maxWidth:760,margin:"0 auto",background:"#0d0d18",minHeight:"100vh",position:"relative"}}>
+
+        {/* BANNER */}
+        <div style={{height:200,overflow:"hidden",position:"relative",background:profile?.banner_url?"transparent":`linear-gradient(135deg,${avatarColor}50,#0d0d18)`}}>
+          {profile?.banner_url && <img src={profile.banner_url} alt="banner" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+          <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,#0d0d18,transparent 60%)"}}/>
+          <button onClick={onClose} style={{position:"absolute",top:16,right:16,background:"rgba(0,0,0,0.6)",border:"1px solid rgba(255,255,255,0.2)",color:"white",borderRadius:10,padding:"8px 14px",cursor:"pointer",fontSize:12,fontFamily:"'Space Mono',monospace",fontWeight:700}}>✕ Close</button>
         </div>
-        <div style={{padding:"0 24px 24px",marginTop:-36}}>
-          <div style={{width:72,height:72,borderRadius:"50%",background:avatarColor,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,border:"4px solid #0d0d18",marginBottom:12,boxShadow:`0 0 24px ${avatarColor}60`}}>{avatarEmoji}</div>
-          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:8}}>
-            <div>
-              <h2 style={{margin:"0 0 2px",fontSize:22,fontFamily:"'Bitter',serif",color:"white"}}>{displayName}</h2>
-              {profile?.gamer_tag && <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace"}}>@{profile.gamer_tag}</div>}
+
+        <div style={{padding:"0 24px 40px",marginTop:-56}}>
+
+          {/* AVATAR + NAME ROW */}
+          <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:12}}>
+            <div style={{display:"flex",alignItems:"flex-end",gap:16}}>
+              {/* Avatar */}
+              <div style={{width:88,height:88,borderRadius:"50%",border:"4px solid #0d0d18",overflow:"hidden",background:avatarColor,display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,flexShrink:0,boxShadow:`0 0 30px ${avatarColor}60`}}>
+                {profile?.avatar_url
+                  ? <img src={profile.avatar_url} alt="avatar" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                  : (profile?.avatar_emoji || "🎮")}
+              </div>
+              <div style={{paddingBottom:4}}>
+                <h1 style={{margin:"0 0 2px",fontSize:26,fontFamily:"'Bitter',serif",color:"white",fontWeight:900}}>{displayName}</h1>
+                {profile?.gamer_tag && <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace"}}>@{profile.gamer_tag}</div>}
+                {profile?.status && (
+                  <div style={{fontSize:11,color:avatarColor,fontFamily:"'Space Mono',monospace",marginTop:4,display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{width:7,height:7,borderRadius:"50%",background:"#4ade80",display:"inline-block"}}/>
+                    {profile.status}
+                  </div>
+                )}
+              </div>
             </div>
-            <div style={{display:"flex",gap:8}}>
-              {!isOwnProfile && currentUser && (
-                <button onClick={handleFollow} style={{background:isFollowing?"rgba(255,255,255,0.08)":"linear-gradient(135deg,#a78bfa,#7c3aed)",border:isFollowing?"1px solid rgba(255,255,255,0.15)":"none",borderRadius:10,padding:"8px 16px",color:"white",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
+
+            {/* Action buttons */}
+            <div style={{display:"flex",gap:8,paddingBottom:4}}>
+              {isOwnProfile ? (
+                <button onClick={onEditProfile}
+                  style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:10,padding:"9px 16px",color:"white",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
+                  ✏️ Edit Profile
+                </button>
+              ) : (
+                <button onClick={handleFollow}
+                  style={{background:isFollowing?"rgba(255,255,255,0.08)":"linear-gradient(135deg,#a78bfa,#7c3aed)",border:isFollowing?"1px solid rgba(255,255,255,0.15)":"none",borderRadius:10,padding:"9px 16px",color:"white",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
                   {isFollowing?"✓ Following":"+ Follow"}
                 </button>
               )}
-              <button onClick={copyLink} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"8px 12px",color:"rgba(255,255,255,0.6)",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>🔗 Share</button>
+              <button onClick={copyLink}
+                style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"9px 12px",color:"rgba(255,255,255,0.6)",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
+                🔗 Share
+              </button>
             </div>
           </div>
-          {profile?.bio && <p style={{fontSize:13,color:"rgba(255,255,255,0.6)",fontFamily:"'Space Mono',monospace",lineHeight:1.7,margin:"0 0 16px"}}>{profile.bio}</p>}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:20}}>
+
+          {/* Bio */}
+          {profile?.bio && <p style={{fontSize:13,color:"rgba(255,255,255,0.6)",fontFamily:"'Space Mono',monospace",lineHeight:1.8,margin:"0 0 20px",maxWidth:560}}>{profile.bio}</p>}
+
+          {/* STATS ROW */}
+          <div style={{display:"flex",gap:20,marginBottom:24,flexWrap:"wrap"}}>
             {[["💬",reviews.length,"Reviews"],["👥",followers.length,"Followers"],["➕",following.length,"Following"]].map(([icon,val,lbl])=>(
-              <div key={lbl} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"12px",textAlign:"center"}}>
-                <div style={{fontSize:18}}>{icon}</div>
-                <div style={{fontSize:20,fontWeight:800,color:avatarColor,fontFamily:"'Space Mono',monospace",lineHeight:1}}>{val}</div>
-                <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",marginTop:2}}>{lbl}</div>
+              <div key={lbl} style={{textAlign:"center"}}>
+                <div style={{fontSize:20,fontWeight:800,color:avatarColor,fontFamily:"'Space Mono',monospace"}}>{val}</div>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace"}}>{icon} {lbl}</div>
               </div>
             ))}
           </div>
-          <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:12}}>📋 RECENT ACTIVITY</div>
-          {reviews.length===0 ? (
-            <div style={{textAlign:"center",padding:"20px 0",color:"rgba(255,255,255,0.25)",fontSize:11,fontFamily:"'Space Mono',monospace"}}>No reviews yet</div>
-          ) : (
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {reviews.map((r,i)=>(
-                <div key={i} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"12px 14px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                    <div style={{fontSize:13,color:"white",fontWeight:700,fontFamily:"'Bitter',serif"}}>{r.game_name}</div>
-                    <div style={{display:"flex",gap:1}}>{[1,2,3,4,5].map(s=><span key={s} style={{fontSize:12,color:s<=r.rating?"#fbbf24":"rgba(255,255,255,0.15)"}}>★</span>)}</div>
-                  </div>
-                  {r.review_text && <div style={{fontSize:11,color:"rgba(255,255,255,0.55)",fontFamily:"'Space Mono',monospace",lineHeight:1.5}}>{r.review_text}</div>}
-                  <div style={{fontSize:9,color:"rgba(255,255,255,0.25)",fontFamily:"'Space Mono',monospace",marginTop:6}}>{new Date(r.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
+
+          {/* ACHIEVEMENTS */}
+          <div style={{marginBottom:24}}>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:10}}>🏆 ACHIEVEMENTS</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+              {achievements.map(a=>(
+                <div key={a.id} title={a.desc}
+                  style={{display:"flex",alignItems:"center",gap:6,background:a.earned?`${a.color}18`:"rgba(255,255,255,0.03)",border:`1px solid ${a.earned?a.color+"40":"rgba(255,255,255,0.06)"}`,borderRadius:20,padding:"5px 10px",opacity:a.earned?1:0.4,transition:"all .2s"}}>
+                  <span style={{fontSize:14}}>{a.icon}</span>
+                  <span style={{fontSize:10,color:a.earned?a.color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",fontWeight:a.earned?700:400}}>{a.label}</span>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* TABS */}
+          <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:"1px solid rgba(255,255,255,0.08)",paddingBottom:0}}>
+            {[["activity","📋 Activity"],["showcase","📌 Showcase"],["backlog","📚 Backlog"]].map(([id,lbl])=>(
+              <button key={id} onClick={()=>setActiveTab(id)}
+                style={{background:"transparent",border:"none",borderBottom:`2px solid ${activeTab===id?avatarColor:"transparent"}`,color:activeTab===id?avatarColor:"rgba(255,255,255,0.4)",padding:"10px 16px",cursor:"pointer",fontSize:11,fontFamily:"'Space Mono',monospace",fontWeight:activeTab===id?700:400,marginBottom:-1,transition:"all .2s"}}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+
+          {/* ACTIVITY TAB */}
+          {activeTab==="activity" && (
+            reviews.length===0 ? (
+              <div style={{textAlign:"center",padding:"30px 0",color:"rgba(255,255,255,0.25)",fontSize:11,fontFamily:"'Space Mono',monospace"}}>No reviews yet</div>
+            ) : (
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                {reviews.map((r,i)=>(
+                  <div key={i} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"14px 16px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                      <div style={{fontSize:14,color:"white",fontWeight:700,fontFamily:"'Bitter',serif"}}>{r.game_name}</div>
+                      <div style={{display:"flex",gap:1}}>{[1,2,3,4,5].map(s=><span key={s} style={{fontSize:13,color:s<=r.rating?"#fbbf24":"rgba(255,255,255,0.15)"}}>★</span>)}</div>
+                    </div>
+                    {r.time_spent && <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace",marginBottom:4}}>⏱ {r.time_spent}</div>}
+                    {r.review_text && <div style={{fontSize:12,color:"rgba(255,255,255,0.65)",fontFamily:"'Space Mono',monospace",lineHeight:1.6}}>{r.review_text}</div>}
+                    <div style={{fontSize:9,color:"rgba(255,255,255,0.2)",fontFamily:"'Space Mono',monospace",marginTop:6}}>{new Date(r.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+
+          {/* SHOWCASE TAB */}
+          {activeTab==="showcase" && (
+            <div>
+              {showcase.length===0 ? (
+                <div style={{textAlign:"center",padding:"30px 0",color:"rgba(255,255,255,0.25)",fontSize:11,fontFamily:"'Space Mono',monospace"}}>
+                  {isOwnProfile ? "No games showcased yet. Edit your profile to pin your favorites." : "No games showcased yet."}
+                </div>
+              ) : (
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12}}>
+                  {showcase.map((g,i)=>(
+                    <div key={i} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"12px",textAlign:"center"}}>
+                      <div style={{fontSize:13,color:"white",fontWeight:700,fontFamily:"'Bitter',serif"}}>{g.name}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* BACKLOG TAB */}
+          {activeTab==="backlog" && (
+            <div>
+              {backlog.length===0 ? (
+                <div style={{textAlign:"center",padding:"30px 0",color:"rgba(255,255,255,0.25)",fontSize:11,fontFamily:"'Space Mono',monospace"}}>
+                  {isOwnProfile ? "Your backlog is empty. Add games you want to play!" : "No backlog games yet."}
+                </div>
+              ) : (
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {backlog.map((g,i)=>(
+                    <div key={i} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",gap:10}}>
+                      <span style={{fontSize:16}}>📚</span>
+                      <div style={{fontSize:13,color:"white",fontFamily:"'Bitter',serif",fontWeight:700}}>{g.name}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1744,6 +1996,17 @@ export default function App() {
             {userProfile?.avatar_emoji||"🎮"}
           </button>
         )}
+        {/* View my profile button */}
+        {user && (
+          <button onClick={()=>setViewProfile(user.email)} title="View My Profile"
+            style={{position:"fixed",bottom:124,right:20,zIndex:100,
+              background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",
+              borderRadius:"50%",width:44,height:44,cursor:"pointer",fontSize:16,
+              display:"flex",alignItems:"center",justifyContent:"center",
+              color:"rgba(255,255,255,0.7)"}}>
+            👤
+          </button>
+        )}
         {/* Theme toggle */}
         <div style={{position:"fixed",bottom:20,right:20,zIndex:100}}>
           <button onClick={()=>setDarkMode(!darkMode)} title={darkMode?"Switch to Light Mode":"Switch to Dark Mode"}
@@ -1895,7 +2158,7 @@ export default function App() {
       {showPaywall && <PaywallModal user={user} onClose={()=>setShowPaywall(false)} onSuccess={handlePaid}/>}
       <GameModal game={selected} onClose={()=>setSelected(null)} currentUser={user}/>
       {showEditProfile && user && <EditProfileModal user={user} onClose={()=>setShowEditProfile(false)} onSave={p=>setUserProfile(p)}/>}
-      {viewProfile && user && <UserProfilePage profileEmail={viewProfile} currentUser={user} onClose={()=>setViewProfile(null)} onGameClick={(id,name)=>console.log(id,name)}/>}
+      {viewProfile && user && <UserProfilePage profileEmail={viewProfile} currentUser={user} onClose={()=>setViewProfile(null)} onEditProfile={()=>{setViewProfile(null);setShowEditProfile(true);}}/>}
     </>
   );
 }
