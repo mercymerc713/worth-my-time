@@ -1965,34 +1965,28 @@ export default function App() {
     setHasLoaded(false); // goes back to landing screen
   };
 
-  const fetchGamesWithTime = useCallback(async (timeGenres, f, minutes) => {
+  const fetchGamesWithTime = useCallback(async (timeGenres) => {
     setLoading(true); setError("");
     try {
+      const todayDate = new Date().toISOString().split("T")[0];
       const params = new URLSearchParams({
         key: RAWG_KEY,
-        page_size: 20,
+        page_size: 40,
         page: 1,
-        ordering: "-released", // newest first — 2026 going down
+        ordering: "-released",
         genres: timeGenres,
+        dates: `2000-01-01,${todayDate}`,
+        exclude_additions: "true",
       });
-      if (f.platform !== "all" && PLATFORM_MAP[f.platform]) params.set("platforms", PLATFORM_MAP[f.platform]);
       const res = await fetch(`${RAWG_BASE}/games?${params}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
-      let results = data.results || [];
-      // Filter out unreleased and data-poor games
-      const today = new Date().toISOString().split("T")[0];
-      results = results.filter(g => {
-        if (!g.released || g.released > today) return false;
-        if (!g.background_image) return false;
-        return true;
-      });
-      // Sort by release date descending (newest first)
-      results = results.sort((a, b) => {
-        const da = new Date(a.released || "2000-01-01");
-        const db = new Date(b.released || "2000-01-01");
-        return db - da;
-      });
+      let results = (data.results || []).filter(g =>
+        g.background_image && g.released && g.released <= todayDate
+      );
+      results = results.sort((a, b) =>
+        new Date(b.released||"2000-01-01") - new Date(a.released||"2000-01-01")
+      );
       setGames(results);
       setTotal(data.count || 0);
       setHasLoaded(true);
