@@ -1,5 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
+// Load Stripe.js dynamically
+if (!document.querySelector('script[src*="stripe"]')) {
+  const s = document.createElement("script");
+  s.src = "https://js.stripe.com/v3/";
+  s.async = true;
+  document.head.appendChild(s);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CONFIG
 // ─────────────────────────────────────────────────────────────────────────────
@@ -7,6 +15,8 @@ const RAWG_KEY = "4d7a97bce7df4cfc94e9981345756746";
 const RAWG_BASE = "https://api.rawg.io/api";
 const TRIAL_DAYS = 7;
 const PRICE = "$7.99";
+const STRIPE_PK = "pk_live_51TFTAJ2K899ZvFgqThSdv7JhhI7f8wT4yazZQ13CPdGseAdBUH0jOWST04GCx4PJkJxO9GgwxOpiZLkc0ZedWlpU00PrTvKTMc";
+const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/8x24gsg9K0bT63XcrU9Zm00";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STORAGE HELPERS (persistent across sessions)
@@ -234,11 +244,23 @@ function PaywallModal({ user, onClose, onSuccess }) {
   const handlePay = async () => {
     if (!card.number || !card.expiry || !card.cvc || !card.name) { setErr("Please fill in all fields."); return; }
     setErr(""); setLoading(true);
-    // Simulate Stripe call (replace with real Stripe.js in production)
-    await new Promise(r => setTimeout(r, 1800));
-    setLoading(false);
-    setStep("success");
-    onSuccess();
+    try {
+      if (!window.Stripe) { throw new Error("Stripe.js not loaded yet. Please refresh and try again."); }
+      const stripe = window.Stripe(STRIPE_PK);
+      const { paymentMethod, error } = await stripe.createPaymentMethod({
+        type: "card",
+        card: { number: card.number.replace(/\s/g,""), exp_month: parseInt(card.expiry.split("/")[0]), exp_year: parseInt("20"+card.expiry.split("/")[1]), cvc: card.cvc },
+        billing_details: { name: card.name },
+      });
+      if (error) { setErr(error.message); setLoading(false); return; }
+      // Payment method created successfully — in production send paymentMethod.id to your backend to confirm charge
+      setLoading(false);
+      setStep("success");
+      onSuccess();
+    } catch(e) {
+      setErr(e.message || "Payment failed. Please try again.");
+      setLoading(false);
+    }
   };
 
   return (
@@ -291,46 +313,34 @@ function PaywallModal({ user, onClose, onSuccess }) {
           </>}
 
           {step==="payment" && <>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:22}}>
-              <button onClick={()=>setStep("offer")} style={{background:"rgba(255,255,255,0.07)",border:"none",color:"white",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:14}}>←</button>
-              <h2 style={{margin:0,fontSize:18,fontFamily:"'Bitter',serif",color:"white"}}>Payment Details</h2>
-              <span style={{marginLeft:"auto",fontSize:13,color:"#f59e0b",fontFamily:"'Space Mono',monospace",fontWeight:700}}>{PRICE}</span>
-            </div>
-
-            <div style={{display:"flex",flexDirection:"column",gap:12}}>
-              <div>
-                <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",letterSpacing:1,marginBottom:6}}>CARDHOLDER NAME</div>
-                <Input placeholder="Name on card" value={card.name} onChange={e=>setCard(c=>({...c,name:e.target.value}))}/>
+            <div style={{textAlign:"center",padding:"8px 0 20px"}}>
+              <div style={{fontSize:40,marginBottom:10}}>🔒</div>
+              <h2 style={{margin:"0 0 8px",fontSize:20,fontFamily:"'Bitter',serif",color:"white"}}>Secure Checkout</h2>
+              <p style={{margin:"0 0 20px",fontSize:12,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace",lineHeight:1.7}}>
+                You'll be taken to Stripe's secure checkout page to complete your {PRICE} one-time payment.
+              </p>
+              <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:22,textAlign:"left"}}>
+                {[
+                  ["🔒","Bank-level encryption","Your card details never touch our servers"],
+                  ["⚡","Instant access","Unlocked immediately after payment"],
+                  ["♾","Lifetime access","One payment, yours forever — no renewals"],
+                ].map(([icon,title,desc])=>(
+                  <div key={title} style={{display:"flex",alignItems:"center",gap:12,background:"rgba(255,255,255,0.03)",borderRadius:11,padding:"10px 13px"}}>
+                    <span style={{fontSize:18}}>{icon}</span>
+                    <div>
+                      <div style={{fontSize:12,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{title}</div>
+                      <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace"}}>{desc}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div>
-                <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",letterSpacing:1,marginBottom:6}}>CARD NUMBER</div>
-                <Input placeholder="1234 5678 9012 3456" value={card.number} onChange={e=>setCard(c=>({...c,number:fmtCard(e.target.value)}))}/>
+              <Btn onClick={()=>window.open(STRIPE_PAYMENT_LINK,"_blank")} variant="gold" style={{width:"100%",fontSize:15,padding:"14px",borderRadius:13}}>
+                Pay {PRICE} Securely on Stripe →
+              </Btn>
+              <div style={{marginTop:10,fontSize:10,color:"rgba(255,255,255,0.25)",fontFamily:"'Space Mono',monospace"}}>
+                Powered by Stripe · No account required
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                <div>
-                  <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",letterSpacing:1,marginBottom:6}}>EXPIRY</div>
-                  <Input placeholder="MM/YY" value={card.expiry} onChange={e=>setCard(c=>({...c,expiry:fmtExp(e.target.value)}))}/>
-                </div>
-                <div>
-                  <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",letterSpacing:1,marginBottom:6}}>CVC</div>
-                  <Input placeholder="123" value={card.cvc} onChange={e=>setCard(c=>({...c,cvc:e.target.value.replace(/\D/g,"").slice(0,4)}))}/>
-                </div>
-              </div>
-            </div>
-
-            {err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>⚠ {err}</div>}
-
-            <Btn onClick={handlePay} variant="gold" style={{width:"100%",marginTop:18,fontSize:14,padding:"14px",borderRadius:13}} disabled={loading}>
-              {loading ? "Processing..." : `Pay ${PRICE} →`}
-            </Btn>
-
-            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:12}}>
-              <span style={{fontSize:14}}>🔒</span>
-              <span style={{fontSize:10,color:"rgba(255,255,255,0.25)",fontFamily:"'Space Mono',monospace"}}>256-bit SSL encryption · Powered by Stripe</span>
-            </div>
-
-            <div style={{marginTop:14,padding:12,background:"rgba(255,255,255,0.03)",borderRadius:10,fontSize:11,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",lineHeight:1.6}}>
-              ⚠ This is a demo payment form. To go live, connect your Stripe publishable key and use Stripe.js for real card processing.
+              <button onClick={()=>setStep("offer")} style={{marginTop:14,background:"none",border:"none",color:"rgba(255,255,255,0.3)",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>← Go back</button>
             </div>
           </>}
 
