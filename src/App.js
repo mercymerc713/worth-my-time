@@ -19,6 +19,74 @@ const STRIPE_PK = "pk_live_51TFTAJ2K899ZvFgqThSdv7JhhI7f8wT4yazZQ13CPdGseAdBUH0j
 const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/8x24gsg9K0bT63XcrU9Zm00";
 
 // ─────────────────────────────────────────────────────────────────────────────
+// STEAM DECK / PROTON DB LAYER
+// ProtonDB API: https://www.protondb.com/api/v1/reports/summaries/{appId}.json
+// Steam Deck compatibility pulled from Steam API by app name matching
+// Since both require a Steam App ID which RAWG provides, we use that directly
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DECK_STATUS = {
+  verified:  { label: "Deck Verified",  color: "#4ade80", icon: "✓", desc: "Works perfectly on Steam Deck" },
+  playable:  { label: "Deck Playable",  color: "#fbbf24", icon: "~", desc: "Playable but may need tweaks" },
+  unsupported: { label: "Unsupported",  color: "#f87171", icon: "✕", desc: "Not supported on Steam Deck" },
+  unknown:   { label: "Deck Unknown",   color: "#94a3b8", icon: "?", desc: "Deck status not yet rated" },
+};
+
+const PROTON_RATINGS = {
+  platinum: { label: "Platinum",  color: "#e2e8f0", desc: "Runs flawlessly on Linux" },
+  gold:     { label: "Gold",      color: "#fbbf24", desc: "Works great with minor tweaks" },
+  silver:   { label: "Silver",    color: "#94a3b8", desc: "Some issues but playable" },
+  bronze:   { label: "Bronze",    color: "#fb923c", desc: "Runs with significant issues" },
+  borked:   { label: "Borked",    color: "#f87171", desc: "Does not run on Linux" },
+};
+
+// Cache for deck/proton data
+const deckCache = {};
+const protonCache = {};
+
+async function fetchDeckStatus(steamAppId) {
+  if (!steamAppId) return "unknown";
+  if (deckCache[steamAppId]) return deckCache[steamAppId];
+  try {
+    const res = await fetch(`https://store.steampowered.com/api/appdetails?appids=${steamAppId}&filters=categories`);
+    const data = await res.json();
+    const cats = data[steamAppId]?.data?.categories || [];
+    const hasDeck = cats.some(c => c.id === 49 || c.id === 50 || c.id === 51);
+    // Category 49 = Verified, 50 = Playable, 51 = Unsupported
+    let status = "unknown";
+    if (cats.some(c => c.id === 49)) status = "verified";
+    else if (cats.some(c => c.id === 50)) status = "playable";
+    else if (cats.some(c => c.id === 51)) status = "unsupported";
+    deckCache[steamAppId] = status;
+    return status;
+  } catch { return "unknown"; }
+}
+
+async function fetchProtonRating(steamAppId) {
+  if (!steamAppId) return null;
+  if (protonCache[steamAppId]) return protonCache[steamAppId];
+  try {
+    const res = await fetch(`https://www.protondb.com/api/v1/reports/summaries/${steamAppId}.json`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const tier = data.tier?.toLowerCase();
+    protonCache[steamAppId] = tier || null;
+    return tier || null;
+  } catch { return null; }
+}
+
+function getSteamAppId(game) {
+  // RAWG stores steam app id in stores array
+  const stores = game.stores || [];
+  const steam = stores.find(s => s.store?.slug === "steam");
+  if (steam?.url) {
+    const match = steam.url.match(/app\/(\d+)/);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // STORAGE HELPERS (persistent across sessions)
 // ─────────────────────────────────────────────────────────────────────────────
 const store = {
@@ -178,6 +246,41 @@ function ScoreRing({ value, color, label, size=64 }) {
 
 function Chip({ label, color="#94a3b8" }) {
   return <span style={{background:color+"20",border:`1px solid ${color}40`,borderRadius:20,padding:"2px 8px",fontSize:9,color,fontFamily:"'Space Mono',monospace"}}>{label}</span>;
+}
+
+// ── Steam Deck Badge ──────────────────────────────────────────────────────
+function DeckBadge({ status }) {
+  const cfg = DECK_STATUS[status] || DECK_STATUS.unknown;
+  return (
+    <span title={cfg.desc} style={{
+      background: cfg.color + "20",
+      border: `1px solid ${cfg.color}50`,
+      borderRadius: 20, padding: "2px 8px",
+      fontSize: 9, color: cfg.color,
+      fontFamily: "'Space Mono',monospace",
+      display: "inline-flex", alignItems: "center", gap: 3,
+    }}>
+      <span style={{fontWeight:700}}>{cfg.icon}</span> {cfg.label}
+    </span>
+  );
+}
+
+// ── Proton Badge ───────────────────────────────────────────────────────────
+function ProtonBadge({ tier }) {
+  if (!tier) return null;
+  const cfg = PROTON_RATINGS[tier];
+  if (!cfg) return null;
+  return (
+    <span title={cfg.desc} style={{
+      background: cfg.color + "20",
+      border: `1px solid ${cfg.color}50`,
+      borderRadius: 20, padding: "2px 8px",
+      fontSize: 9, color: cfg.color,
+      fontFamily: "'Space Mono',monospace",
+    }}>
+      🐧 {cfg.label}
+    </span>
+  );
 }
 
 function Input({ placeholder, value, onChange, type="text", onKeyDown, style:s={} }) {
@@ -429,10 +532,20 @@ function AuthScreen({ onLogin }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function GameCard({ game, onClick, locked }) {
   const [hov, setHov] = useState(false);
+  const [deckStatus, setDeckStatus] = useState("unknown");
+  const [protonTier, setProtonTier] = useState(null);
   const scores = computeScores(game);
   const color  = accentOf(game.genres);
   const cat    = sessionCatOf(game.genres);
   const catLbl = {short:"⚡ Quick",medium:"🕐 Mid",long:"🏔 Long"}[cat];
+
+  useEffect(() => {
+    const appId = getSteamAppId(game);
+    if (appId) {
+      fetchDeckStatus(appId).then(setDeckStatus);
+      fetchProtonRating(appId).then(setProtonTier);
+    }
+  }, [game.id]);
 
   return (
     <div onClick={()=>onClick(game)} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
@@ -457,6 +570,8 @@ function GameCard({ game, onClick, locked }) {
         </div>
         <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>
           <Chip label={scores.difficulty} color={scores.difficulty==="Relaxed"?"#4ade80":scores.difficulty==="Challenging"?"#f87171":"#fbbf24"}/>
+          {deckStatus !== "unknown" && <DeckBadge status={deckStatus}/>}
+          {protonTier && <ProtonBadge tier={protonTier}/>}
         </div>
         <div style={{display:"flex",justifyContent:"space-around",margin:"8px 0",padding:"8px 0",borderTop:"1px solid rgba(255,255,255,0.05)",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
           <ScoreRing value={scores.t} label="Time"      color={color}/>
@@ -498,6 +613,9 @@ function GameModal({ game, onClose }) {
             <ScoreRing value={scores.a} label="Adventure"     color={color} size={68}/>
             <ScoreRing value={scores.w} label="Worth It"      color={color} size={68}/>
           </div>
+          {/* Deck & Proton section in modal */}
+          <DeckModalSection game={game}/>
+
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
             {[["⏱ Session",scores.hltb.session],["📖 Story",scores.hltb.main],["🏆 100%",scores.hltb.complete],["🎯 Difficulty",scores.difficulty],["⭐ Rating",game.rating?`${game.rating}/5`:"N/A"],["📊 Metacritic",game.metacritic||"N/A"],["🔞 Age",scores.esrb],["📅 Released",game.released||"N/A"]].map(([k,v])=>(
               <div key={k} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"9px 12px"}}>
@@ -554,7 +672,7 @@ function LockedOverlay({ onUpgrade }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN APP
 // ─────────────────────────────────────────────────────────────────────────────
-const DEFAULT_FILTERS = {time:"all",genre:"all",platform:"all",difficulty:"all",multiplayer:"all",price:"all"};
+const DEFAULT_FILTERS = {time:"all",genre:"all",platform:"all",difficulty:"all",multiplayer:"all",price:"all",deckFilter:"all"};
 const PLATFORM_MAP = {all:"",pc:"4",playstation:"187",xbox:"186",nintendo:"7",mobile:"21,3"};
 const SORT_MAP     = {rating:"-rating",metacritic:"-metacritic",newest:"-released",popular:"-added"};
 
@@ -683,6 +801,7 @@ export default function App() {
                   ["🖥 PLATFORM",[["all","All"],["pc","PC"],["playstation","PS"],["xbox","Xbox"],["nintendo","Nintendo"],["mobile","Mobile"]], "platform", "#a78bfa"],
                   ["🎯 DIFFICULTY",[["all","All"],["easy","Relaxed"],["medium","Medium"],["hard","Challenging"]], "difficulty", "#fbbf24"],
                   ["👥 PLAY STYLE",[["all","All"],["singleplayer","Solo"],["multiplayer","Multi"],["co-op","Co-op"]], "multiplayer", "#34d399"],
+                  ["🎮 STEAM DECK",[["all","All"],["verified","✓ Verified"],["playable","~ Playable"],["unsupported","✕ Unsupported"]], "deckFilter", "#4ade80"],
                 ].map(([label, opts, key, color])=>(
                   <div key={key}>
                     <div style={{fontSize:9,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:6}}>{label}</div>
