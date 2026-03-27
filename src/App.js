@@ -11,28 +11,35 @@ const PRICE = "$7.99";
 const STRIPE_PK = "pk_live_51TFTAJ2K899ZvFgqThSdv7JhhI7f8wT4yazZQ13CPdGseAdBUH0jOWST04GCx4PJkJxO9GgwxOpiZLkc0ZedWlpU00PrTvKTMc";
 const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/8x24gsg9K0bT63XcrU9Zm00";
 
-// ─── EMAILJS CONFIG ──────────────────────────────────────────────────────
-const EMAILJS_SERVICE  = "service_qsiu90k";
-const EMAILJS_TEMPLATE = "template_04hyfri";
-const EMAILJS_KEY      = "sL63xVWEt2MIkdUAS";
+// ─── RESEND EMAIL CONFIG ─────────────────────────────────────────────────
+const RESEND_KEY = "re_UC3W4tN9_B2GazeEbxQRkAZfBWLGJLwqr";
 
 async function sendVerificationEmail(toEmail, toName, code) {
   try {
-    const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+    const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${RESEND_KEY}`,
+      },
       body: JSON.stringify({
-        service_id:    EMAILJS_SERVICE,
-        template_id:   EMAILJS_TEMPLATE,
-        user_id:       EMAILJS_KEY,
-        template_params: {
-          to_email:   toEmail,
-          to_name:    toName,
-          reset_code: code,
-        },
+        from: "Worth My Time <onboarding@resend.dev>",
+        to: [toEmail],
+        subject: "Your Worth My Time verification code",
+        html: `
+          <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0d0d18;color:white;border-radius:16px">
+            <h1 style="font-size:24px;margin:0 0 8px;color:white">Worth My Time? 🎮</h1>
+            <p style="color:rgba(255,255,255,0.6);margin:0 0 24px">Hi ${toName}, here is your verification code:</p>
+            <div style="background:rgba(167,139,250,0.15);border:2px solid rgba(167,139,250,0.4);border-radius:12px;padding:24px;text-align:center;margin:0 0 24px">
+              <div style="font-size:40px;font-weight:900;letter-spacing:8px;color:#a78bfa;font-family:monospace">${code}</div>
+              <div style="font-size:12px;color:rgba(255,255,255,0.4);margin-top:8px">Expires in 15 minutes</div>
+            </div>
+            <p style="color:rgba(255,255,255,0.4);font-size:12px;margin:0">If you didn't create an account on worthmytime.info, ignore this email.</p>
+          </div>
+        `,
       }),
     });
-    return res.status === 200;
+    return res.status === 200 || res.status === 201;
   } catch { return false; }
 }
 
