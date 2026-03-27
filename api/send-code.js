@@ -21,7 +21,7 @@ export default async function handler(req, res) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer re_UC3W4tN9_B2GazeEbxQRkAZfBWLGJLwqr`,
+        "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
       },
       body: JSON.stringify({
         from: "Worth My Time <onboarding@resend.dev>",
