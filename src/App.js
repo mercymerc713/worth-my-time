@@ -1478,7 +1478,7 @@ export default function App() {
         {/* Filter Toggle */}
         {access && (
           <div style={{maxWidth:900,margin:"0 auto 14px",padding:"0 16px"}}>
-            <button onClick={()=>setShowFilters(!showFilters)} style={{background:darkMode?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.05)",border:`1px solid ${darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.15)"}`,borderRadius:11,padding:"9px 16px",color:darkMode?"rgba(255,255,255,0.6)":"rgba(0,0,0,0.6)",cursor:"pointer",fontSize:11,fontFamily:"'Space Mono',monospace",display:"flex",alignItems:"center",gap:8}}>
+            <button onClick={()=>setShowFilters(!showFilters)} style={{background:darkMode?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.05)",border:`1px solid ${darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.15)"}`,borderRadius:11,padding:"9px 16px",color:darkMode?"rgba(255,255,255,0.6)":"rgba(0,0,0,0.65)",cursor:"pointer",fontSize:11,fontFamily:"'Space Mono',monospace",display:"flex",alignItems:"center",gap:8}}>
               ⚙ Filters {showFilters?"▲":"▼"}
             </button>
             {showFilters && (
@@ -1495,12 +1495,12 @@ export default function App() {
                     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                       {opts.map(([v,l])=>{
                         const active=filters[key]===v;
-                        return <button key={v} onClick={()=>setFilters(f=>({...f,[key]:v}))} style={{background:active?(color==="white"?"white":color+"25"):"rgba(255,255,255,0.05)",color:active?(color==="white"?"#080810":color):"rgba(255,255,255,0.45)",border:`1px solid ${active?(color==="white"?"white":color+"70"):"rgba(255,255,255,0.1)"}`,borderRadius:100,padding:"5px 12px",cursor:"pointer",fontSize:10,fontFamily:"'Space Mono',monospace",transition:"all .2s",fontWeight:active?700:400}}>{l}</button>;
+                        return <button key={v} onClick={()=>setFilters(f=>({...f,[key]:v}))} style={{background:active?(color==="white"?"white":color+"25"):darkMode?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.06)",color:active?(color==="white"?"#080810":color):darkMode?"rgba(255,255,255,0.45)":"rgba(0,0,0,0.6)",border:`1px solid ${active?(color==="white"?"white":color+"70"):darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.15)"}`,borderRadius:100,padding:"5px 12px",cursor:"pointer",fontSize:10,fontFamily:"'Space Mono',monospace",transition:"all .2s",fontWeight:active?700:400}}>{l}</button>;
                       })}
                     </div>
                   </div>
                 ))}
-                <button onClick={()=>{setFilters(DEFAULT_FILTERS);setPage(1);}} style={{alignSelf:"flex-start",background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:9,padding:"6px 13px",color:"#f87171",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>✕ Clear filters</button>
+                <button onClick={()=>{setFilters(DEFAULT_FILTERS);setPage(1);}} style={{alignSelf:"flex-start",background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:9,padding:"6px 13px",color:darkMode?"#f87171":"#dc2626",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>✕ Clear filters</button>
               </div>
             )}
           </div>
@@ -1513,7 +1513,7 @@ export default function App() {
               <span style={{fontSize:18}}>🔒</span>
               <div style={{flex:1}}>
                 <div style={{fontSize:12,color:"#f59e0b",fontFamily:"'Space Mono',monospace",fontWeight:700}}>Filters locked — Unlock for {PRICE}</div>
-                <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace"}}>Genre, difficulty, multiplayer, price filters + unlimited searches</div>
+                <div style={{fontSize:10,color:darkMode?"rgba(255,255,255,0.35)":"rgba(0,0,0,0.5)",fontFamily:"'Space Mono',monospace"}}>Genre, difficulty, multiplayer, price filters + unlimited searches</div>
               </div>
               <span style={{fontSize:11,color:"#f59e0b",fontFamily:"'Space Mono',monospace",whiteSpace:"nowrap"}}>Unlock →</span>
             </div>
