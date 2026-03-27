@@ -11,6 +11,31 @@ const PRICE = "$7.99";
 const STRIPE_PK = "pk_live_51TFTAJ2K899ZvFgqThSdv7JhhI7f8wT4yazZQ13CPdGseAdBUH0jOWST04GCx4PJkJxO9GgwxOpiZLkc0ZedWlpU00PrTvKTMc";
 const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/8x24gsg9K0bT63XcrU9Zm00";
 
+// ─── SUPABASE CONFIG ──────────────────────────────────────────────────────
+const SUPABASE_URL = "https://bibpoybwclvifqmouxsf.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpYnBveWJ3Y2x2aWZxbW91eHNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2MDYwMjgsImV4cCI6MjA5MDE4MjAyOH0.R9FBlAT6FXTMshVaFjOCPtMarVeGael5zkFKtNf5ao8";
+const SUPABASE_REST = `${SUPABASE_URL}/rest/v1`;
+
+const sbHeaders = {
+  "Content-Type": "application/json",
+  "apikey": SUPABASE_KEY,
+  "Authorization": `Bearer ${SUPABASE_KEY}`,
+  "Prefer": "return=representation",
+};
+
+async function sbFetch(path, options = {}) {
+  const res = await fetch(`${SUPABASE_REST}${path}`, {
+    ...options,
+    headers: { ...sbHeaders, ...(options.headers || {}) },
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(err);
+  }
+  const text = await res.text();
+  return text ? JSON.parse(text) : [];
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // STEAM DECK / PROTON DB LAYER
 // ProtonDB API: https://www.protondb.com/api/v1/reports/summaries/{appId}.json
@@ -86,24 +111,49 @@ function hasFullAccess(user) {
 // ─────────────────────────────────────────────────────────────────────────────
 // COMMUNITY REVIEWS
 // ─────────────────────────────────────────────────────────────────────────────
-function getReviewKey(gameId) { return `wmt_reviews_${gameId}`; }
-
+// Load all reviews for a game from Supabase
 async function loadReviews(gameId) {
   try {
-    const data = localStorage.getItem(getReviewKey(gameId));
-    return data ? JSON.parse(data) : [];
-  } catch { return []; }
+    const data = await sbFetch(
+      `/reviews?game_id=eq.${gameId}&order=created_at.desc&limit=50`
+    );
+    // Normalize field names to match our UI
+    return (data || []).map(r => ({
+      userEmail:  r.user_email,
+      userName:   r.user_name,
+      rating:     r.rating,
+      text:       r.review_text,
+      timeSpent:  r.time_spent,
+      date:       new Date(r.created_at).toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" }),
+    }));
+  } catch (e) {
+    console.error("loadReviews error:", e);
+    return [];
+  }
 }
 
-async function saveReview(gameId, review) {
+// Save or update a review in Supabase
+async function saveReview(gameId, gameName, review) {
   try {
-    const reviews = await loadReviews(gameId);
-    const existing = reviews.findIndex(r => r.userEmail === review.userEmail);
-    if (existing >= 0) reviews[existing] = review;
-    else reviews.unshift(review);
-    localStorage.setItem(getReviewKey(gameId), JSON.stringify(reviews));
-    return reviews;
-  } catch { return []; }
+    // Upsert — insert or update if same game_id + user_email
+    await sbFetch("/reviews", {
+      method: "POST",
+      headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify({
+        game_id:     String(gameId),
+        game_name:   gameName,
+        user_email:  review.userEmail,
+        user_name:   review.userName,
+        rating:      review.rating,
+        review_text: review.text,
+        time_spent:  review.timeSpent,
+      }),
+    });
+    return await loadReviews(gameId);
+  } catch (e) {
+    console.error("saveReview error:", e);
+    return await loadReviews(gameId);
+  }
 }
 
 function StarPicker({ value, onChange, readonly=false }) {
@@ -154,7 +204,7 @@ function CommunityReviews({ game, currentUser }) {
       timeSpent: myTime,
       date: new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}),
     };
-    const updated = await saveReview(game.id, review);
+    const updated = await saveReview(game.id, game.name, review);
     setReviews(updated);
     setSubmitting(false);
     setSubmitted(true);
