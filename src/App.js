@@ -11,6 +11,31 @@ const PRICE = "$7.99";
 const STRIPE_PK = "pk_live_51TFTAJ2K899ZvFgqThSdv7JhhI7f8wT4yazZQ13CPdGseAdBUH0jOWST04GCx4PJkJxO9GgwxOpiZLkc0ZedWlpU00PrTvKTMc";
 const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/8x24gsg9K0bT63XcrU9Zm00";
 
+// ─── EMAILJS CONFIG ──────────────────────────────────────────────────────
+const EMAILJS_SERVICE  = "service_qsiu90k";
+const EMAILJS_TEMPLATE = "template_04hyfri";
+const EMAILJS_KEY      = "sL63xVWEt2MIkdUAS";
+
+async function sendVerificationEmail(toEmail, toName, code) {
+  try {
+    const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        service_id:    EMAILJS_SERVICE,
+        template_id:   EMAILJS_TEMPLATE,
+        user_id:       EMAILJS_KEY,
+        template_params: {
+          to_email:   toEmail,
+          to_name:    toName,
+          reset_code: code,
+        },
+      }),
+    });
+    return res.status === 200;
+  } catch { return false; }
+}
+
 // ─── SUPABASE CONFIG ──────────────────────────────────────────────────────
 const SUPABASE_URL = "https://bibpoybwclvifqmouxsf.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpYnBveWJ3Y2x2aWZxbW91eHNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2MDYwMjgsImV4cCI6MjA5MDE4MjAyOH0.R9FBlAT6FXTMshVaFjOCPtMarVeGael5zkFKtNf5ao8";
@@ -756,30 +781,14 @@ function AuthScreen({ onLogin }) {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     // Store code with 15min expiry
     await store.set(`wmt_reset_${emailKey}`, { code, expiresAt: Date.now() + 15 * 60 * 1000 });
-    // Send email via EmailJS
-    try {
-      await fetch("https://api.emailjs.com/api/v1.0/email/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          service_id: "YOUR_EMAILJS_SERVICE_ID",
-          template_id: "YOUR_EMAILJS_TEMPLATE_ID",
-          user_id: "YOUR_EMAILJS_PUBLIC_KEY",
-          template_params: {
-            to_email: email,
-            to_name: account.name,
-            reset_code: code,
-            app_name: "Worth My Time",
-          }
-        })
-      });
-      setSuccess(`A reset code has been sent to ${email}. Check your inbox.`);
-      setResetStep(2);
-    } catch {
-      // If EmailJS not configured, show code directly for testing
-      setSuccess(`Your reset code is: ${code} (valid for 15 minutes)`);
-      setResetStep(2);
+    // Send real email via EmailJS
+    const sent = await sendVerificationEmail(email, account.name, code);
+    if (sent) {
+      setSuccess(`Reset code sent to ${email} — check your inbox and spam folder.`);
+    } else {
+      setSuccess(`Couldn't send email. Your code is: ${code}`);
     }
+    setResetStep(2);
   };
 
   const handleVerifyCode = async () => {
@@ -836,8 +845,15 @@ function AuthScreen({ onLogin }) {
         // Save pending user data
         const user = createUser(name.trim(), emailKey);
         setPendingUser({ user, emailKey, passwordHash: btoa(pass) });
-        setVerifyCode(code); // show on screen since EmailJS not configured yet
-        setSuccess(`Verification code sent! Your code is: ${code}`);
+
+        // Send real email via EmailJS
+        const sent = await sendVerificationEmail(emailKey, name.trim(), code);
+        if (sent) {
+          setSuccess(`Verification code sent to ${emailKey} — check your inbox and spam folder.`);
+        } else {
+          // Fallback — show on screen if email fails
+          setSuccess(`Couldn't send email. Your code is: ${code}`);
+        }
         setVerifyStep(2);
         return;
       }
