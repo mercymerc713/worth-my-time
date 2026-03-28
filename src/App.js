@@ -2083,8 +2083,17 @@ export default function App() {
           <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.09)",borderRadius:14,padding:14}}>
             <div style={{fontSize:9,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",letterSpacing:2,marginBottom:8}}>⚡ I HAVE THIS MANY MINUTES</div>
             <div style={{display:"flex",gap:8}}>
-              <Input placeholder="e.g. 45" type="number" value={minutes} onChange={e=>setMinutes(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleTimeSearch()} style={{padding:"10px 12px",fontSize:12}}/>
-              <Btn onClick={handleTimeSearch} variant="primary" style={{whiteSpace:"nowrap",padding:"10px 16px",fontSize:11,borderRadius:9}}>Find Games →</Btn>
+              <Input placeholder="e.g. 45" type="number" value={minutes}
+                onChange={e=>{ const v=e.target.value; setMinutes(v); if(!v) handleClearTimeSearch(); }}
+                onKeyDown={e=>e.key==="Enter"&&handleTimeSearch()}
+                style={{padding:"10px 12px",fontSize:12,background:darkMode?"rgba(0,0,0,0.5)":"rgba(0,0,0,0.05)",color:darkMode?"white":"#0f0f1a",border:`1px solid ${darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.15)"}`}}/>
+              <Btn onClick={handleTimeSearch} variant="primary" style={{whiteSpace:"nowrap",padding:"10px 16px",fontSize:11,borderRadius:9}}>Find →</Btn>
+              {minutes && (
+                <button onClick={handleClearTimeSearch}
+                  style={{background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.4)",borderRadius:9,padding:"10px 13px",color:"#f87171",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",whiteSpace:"nowrap",fontWeight:700}}>
+                  ✕
+                </button>
+              )}
             </div>
           </div>
         </div>
