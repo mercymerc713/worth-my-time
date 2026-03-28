@@ -1047,13 +1047,39 @@ function AuthScreen({ onLogin }) {
   };
 
   return (
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:20,background:"#07070f",backgroundImage:"radial-gradient(ellipse at 30% 20%, #1a0535 0%, transparent 55%), radial-gradient(ellipse at 70% 80%, #051528 0%, transparent 55%)"}}>
-      <div style={{width:"100%",maxWidth:400}}>
-        <div style={{textAlign:"center",marginBottom:32}}>
-          <h1 style={{margin:"0 0 6px",fontSize:34,fontFamily:"'Bitter',serif",fontWeight:900,color:"white",letterSpacing:-1}}>Worth My Time?</h1>
-          <p style={{color:"rgba(255,255,255,0.35)",fontSize:12,fontFamily:"'Space Mono',monospace",margin:0}}>Game intelligence for busy people</p>
-        </div>
+    <div style={{minHeight:"100vh",background:"#07070f",backgroundImage:"radial-gradient(ellipse at 30% 20%, #1a0535 0%, transparent 55%), radial-gradient(ellipse at 70% 80%, #051528 0%, transparent 55%)"}}>
 
+      {/* ── HERO SECTION ── */}
+      <div style={{textAlign:"center",padding:"52px 20px 40px",maxWidth:700,margin:"0 auto"}}>
+        <div style={{display:"inline-block",background:"rgba(167,139,250,0.12)",border:"1px solid rgba(167,139,250,0.3)",borderRadius:20,padding:"5px 14px",fontSize:10,color:"#a78bfa",fontFamily:"'Space Mono',monospace",fontWeight:700,letterSpacing:1,marginBottom:18}}>
+          🚀 NOW IN EARLY ACCESS
+        </div>
+        <h1 style={{margin:"0 0 14px",fontSize:"clamp(36px,7vw,64px)",fontFamily:"'Bitter',serif",fontWeight:900,color:"white",letterSpacing:-2,lineHeight:1.05}}>
+          Worth My Time?
+        </h1>
+        <p style={{color:"rgba(255,255,255,0.5)",fontSize:"clamp(13px,2vw,16px)",fontFamily:"'Lora',serif",fontStyle:"italic",margin:"0 auto 32px",maxWidth:480,lineHeight:1.7}}>
+          Game intelligence for busy people. Discover games that fit your schedule — not the other way around.
+        </p>
+
+        {/* 3 value props */}
+        <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap",marginBottom:40}}>
+          {[
+            ["⏱","Session-Friendly Scores","Know before you play if a game fits 30 mins or needs 3 hours"],
+            ["🎮","500,000+ Games","The full database, scored and filtered for time-pressed players"],
+            ["💰","One-Time Payment","No subscriptions — pay ${PRICE} once, keep access forever"],
+          ].map(([icon,title,desc])=>(
+            <div key={title} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:16,padding:"16px 18px",maxWidth:200,textAlign:"left",flex:"1 0 160px"}}>
+              <div style={{fontSize:22,marginBottom:8}}>{icon}</div>
+              <div style={{fontSize:12,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace",marginBottom:4,lineHeight:1.3}}>{title}</div>
+              <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",lineHeight:1.6}}>{desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── AUTH FORM ── */}
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"0 20px 60px"}}>
+      <div style={{width:"100%",maxWidth:400}}>
         {/* Trial offer banner */}
         <div style={{background:"rgba(167,139,250,0.12)",border:"1px solid rgba(167,139,250,0.3)",borderRadius:14,padding:"12px 16px",marginBottom:20,textAlign:"center"}}>
           <div style={{fontSize:13,color:"#a78bfa",fontFamily:"'Space Mono',monospace",fontWeight:700,marginBottom:3}}>🎮 Start your 7-day free trial</div>
@@ -1190,6 +1216,180 @@ function AuthScreen({ onLogin }) {
               </button>
             </div>
           )}
+        </div>
+      </div>
+      </div>{/* end auth form wrapper */}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TRENDING SECTION
+// ─────────────────────────────────────────────────────────────────────────────
+function TrendingSection({ onGameClick, darkMode }) {
+  const [games, setGames] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [category, setCategory] = useState("top");
+
+  useEffect(() => {
+    setLoading(true);
+    const today = new Date().toISOString().split("T")[0];
+    let url;
+    if (category === "top") {
+      url = `${RAWG_BASE}/games?key=${RAWG_KEY}&page_size=15&ordering=-rating&metacritic=80,100&dates=2015-01-01,${today}&exclude_additions=true`;
+    } else if (category === "new") {
+      const threeMonthsAgo = new Date(Date.now() - 90*24*60*60*1000).toISOString().split("T")[0];
+      url = `${RAWG_BASE}/games?key=${RAWG_KEY}&page_size=15&ordering=-released&dates=${threeMonthsAgo},${today}&exclude_additions=true`;
+    } else {
+      url = `${RAWG_BASE}/games?key=${RAWG_KEY}&page_size=15&ordering=-rating&genres=puzzle,arcade,indie&dates=2015-01-01,${today}&exclude_additions=true`;
+    }
+    fetch(url)
+      .then(r => r.json())
+      .then(data => {
+        setGames((data.results||[]).filter(g=>g.background_image).slice(0,12));
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [category]);
+
+  return (
+    <div style={{marginBottom:32}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
+        <div style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.35)":"#333",fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800}}>
+          🔥 FEATURED GAMES
+        </div>
+        <div style={{display:"flex",gap:5}}>
+          {[["top","⭐ Top Rated"],["new","🆕 Just Released"],["short","⚡ Quick Play"]].map(([v,l])=>(
+            <button key={v} onClick={()=>setCategory(v)}
+              style={{background:category===v?"rgba(167,139,250,0.2)":darkMode?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.06)",
+                color:category===v?"#a78bfa":darkMode?"rgba(255,255,255,0.45)":"rgba(0,0,0,0.5)",
+                border:`1px solid ${category===v?"rgba(167,139,250,0.4)":darkMode?"rgba(255,255,255,0.08)":"rgba(0,0,0,0.12)"}`,
+                borderRadius:20,padding:"4px 10px",cursor:"pointer",fontSize:9,
+                fontFamily:"'Space Mono',monospace",fontWeight:category===v?700:400,transition:"all .2s"}}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{display:"flex",gap:6,alignItems:"center",padding:"24px 0"}}>
+          {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:"#a78bfa",animation:"pulse 1.2s ease infinite",animationDelay:`${i*.2}s`}}/>)}
+        </div>
+      ) : (
+        <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:8,scrollbarWidth:"thin",scrollbarColor:"#2a2a3e transparent"}}>
+          {games.map(game => {
+            const scores = computeScores(game);
+            const color = accentOf(game.genres);
+            return (
+              <div key={game.id} onClick={()=>onGameClick(game)}
+                style={{flexShrink:0,width:148,cursor:"pointer",borderRadius:14,overflow:"hidden",
+                  background:darkMode?"#0d0d18":"#fff",
+                  border:`1px solid ${darkMode?"rgba(255,255,255,0.07)":"rgba(0,0,0,0.08)"}`,
+                  transition:"transform .2s,box-shadow .2s"}}
+                onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow=`0 12px 30px ${color}35`;}}
+                onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="none";}}>
+                <div style={{height:88,overflow:"hidden",position:"relative",background:"#1a1a2e"}}>
+                  {game.background_image
+                    ? <img src={game.background_image} alt={game.name} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.85}}/>
+                    : <div style={{width:"100%",height:"100%",background:`linear-gradient(135deg,${color}30,#0d0d18)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>🎮</div>}
+                  <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,#0d0d18,transparent 60%)"}}/>
+                  {game.metacritic && <div style={{position:"absolute",top:5,right:5,background:game.metacritic>74?"#16a34a":game.metacritic>59?"#ca8a04":"#dc2626",borderRadius:5,padding:"1px 5px",fontSize:9,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>MC {game.metacritic}</div>}
+                </div>
+                <div style={{padding:"8px 10px"}}>
+                  <div style={{fontSize:11,fontWeight:700,color:darkMode?"white":"#0f0f1a",fontFamily:"'Bitter',serif",lineHeight:1.2,marginBottom:6,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden",minHeight:26}}>{game.name}</div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:9,fontFamily:"'Space Mono',monospace"}}>
+                    <span style={{color:color,fontWeight:700}}>T:{scores.t}</span>
+                    <span style={{color:color,fontWeight:700}}>A:{scores.a}</span>
+                    <span style={{color:color,fontWeight:700}}>W:{scores.w}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FAQ MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+function FAQModal({ onClose, darkMode=true }) {
+  const [open, setOpen] = useState(null);
+  const bg = darkMode ? "#0d0d18" : "#ffffff";
+  const border = darkMode ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.12)";
+  const text = darkMode ? "white" : "#0f0f1a";
+  const muted = darkMode ? "rgba(255,255,255,0.4)" : "#555";
+
+  const faqs = [
+    ["What are the Time, Adventure, and Worth It scores?",
+     "Time (T) measures how session-friendly a game is — 90+ means great 15–30 min sessions, below 50 means you need 2+ hours to feel progress. Adventure (A) rates story depth and world richness. Worth It (W) combines player ratings, Metacritic scores, and review sentiment to tell you if the game deserves your limited hours."],
+    ["How is the free trial different from full access?",
+     `Your 7-day free trial gives you complete access to everything — all 500,000+ games, filters, reviews, and profiles. After 7 days you'll need the one-time ${PRICE} payment to continue. No subscriptions, ever.`],
+    [`Is the ${PRICE} really a one-time payment?`,
+     "Yes. Pay once, keep access forever. We will never charge you again and there are no hidden fees or tiers."],
+    ["Where does the game data come from?",
+     "Game data is sourced from RAWG, one of the largest game databases with 500,000+ titles. Playtime estimates are based on HowLongToBeat averages by genre. Scores are calculated from genre, ratings, and Metacritic data."],
+    ["Can I trust the scores?",
+     "Scores are algorithmic estimates — they're a quick starting point for busy people, not a replacement for reading reviews. Always check the community reviews on each game for real player opinions."],
+    ["How do community reviews work?",
+     "Any logged-in user can leave a star rating, time spent, and a written review on any game. Reviews can be posted anonymously. The average rating is shown on each game's detail page."],
+    ["I paid but my account isn't unlocked. What do I do?",
+     "After paying on Stripe, click 'I've Completed Payment — Activate Access' in the checkout modal. This checks your payment and unlocks your account instantly. If it still doesn't work, sign out and back in — your paid status will load on next login."],
+  ];
+
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(14px)"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:bg,border:`1px solid ${border}`,borderRadius:24,width:"100%",maxWidth:560,maxHeight:"88vh",overflowY:"auto",boxShadow:"0 0 80px rgba(0,0,0,0.6)"}}>
+        <div style={{padding:"28px 28px 0"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+            <h2 style={{margin:0,fontSize:22,fontFamily:"'Bitter',serif",color:text,fontWeight:900}}>FAQ & About</h2>
+            <button onClick={onClose} style={{background:"none",border:"none",color:muted,fontSize:20,cursor:"pointer",padding:"4px 8px"}}>✕</button>
+          </div>
+          <p style={{margin:"0 0 22px",fontSize:12,color:muted,fontFamily:"'Space Mono',monospace",lineHeight:1.8}}>
+            Worth My Time? is a game discovery tool built for people with limited gaming time. We score every game on three dimensions that matter when you're busy.
+          </p>
+
+          {/* Score explainer */}
+          <div style={{background:darkMode?"rgba(255,255,255,0.03)":"rgba(0,0,0,0.04)",border:`1px solid ${border}`,borderRadius:14,padding:16,marginBottom:22}}>
+            <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:12,fontWeight:700}}>HOW SCORES WORK (0–99)</div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {[
+                ["T","Time","#4ade80","Session-friendliness. 90+ = play 15–30 min and feel satisfied. Below 50 = needs long sittings."],
+                ["A","Adventure","#60a5fa","Story depth and world richness. High = compelling narrative. Low = story-light or repetitive."],
+                ["W","Worth It","#fbbf24","Overall value. Combines player ratings, Metacritic, and popularity. High = overwhelmingly recommended."],
+              ].map(([abbr,name,color,desc])=>(
+                <div key={abbr} style={{display:"flex",gap:12,alignItems:"flex-start"}}>
+                  <div style={{width:32,height:32,borderRadius:8,background:color+"20",border:`1px solid ${color}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color,fontFamily:"'Space Mono',monospace",flexShrink:0}}>{abbr}</div>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700,color:text,fontFamily:"'Space Mono',monospace",marginBottom:2}}>{name}</div>
+                    <div style={{fontSize:11,color:muted,fontFamily:"'Space Mono',monospace",lineHeight:1.6}}>{desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* FAQ accordions */}
+        <div style={{padding:"0 28px 28px",display:"flex",flexDirection:"column",gap:6}}>
+          <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:4,fontWeight:700}}>FREQUENTLY ASKED QUESTIONS</div>
+          {faqs.map(([q,a],i)=>(
+            <div key={i} style={{border:`1px solid ${border}`,borderRadius:12,overflow:"hidden"}}>
+              <button onClick={()=>setOpen(open===i?null:i)}
+                style={{width:"100%",background:open===i?darkMode?"rgba(167,139,250,0.08)":"rgba(167,139,250,0.06)":"transparent",border:"none",padding:"12px 16px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,textAlign:"left"}}>
+                <span style={{fontSize:12,color:text,fontFamily:"'Space Mono',monospace",fontWeight:open===i?700:400,lineHeight:1.5}}>{q}</span>
+                <span style={{color:"#a78bfa",fontSize:16,flexShrink:0,transition:"transform .2s",display:"inline-block",transform:open===i?"rotate(45deg)":"rotate(0deg)"}}>+</span>
+              </button>
+              {open===i && (
+                <div style={{padding:"0 16px 14px",borderTop:`1px solid ${border}`}}>
+                  <div style={{paddingTop:10,fontSize:12,color:muted,fontFamily:"'Space Mono',monospace",lineHeight:1.8}}>{a}</div>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -1817,6 +2017,7 @@ export default function App() {
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [viewProfile, setViewProfile] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
+  const [showFAQ, setShowFAQ] = useState(false);
   const debRef = useRef(null);
 
   // Load user from storage — refresh from Supabase to get latest trial/paid status
@@ -2200,11 +2401,12 @@ export default function App() {
         {/* Content */}
         <div style={{maxWidth:900,margin:"0 auto",padding:"0 16px"}}>
           {!hasLoaded && !loading && (
-            <div style={{textAlign:"center",padding:"48px 20px"}}>
-              <div style={{fontSize:42,marginBottom:12}}>🎮</div>
-              <h2 style={{color:darkMode?"white":"#0f0f1a",fontFamily:"'Bitter',serif",margin:"0 0 8px"}}>500,000+ Games Ready</h2>
-              <p style={{color:darkMode?"rgba(255,255,255,0.4)":"rgba(0,0,0,0.5)",fontFamily:"'Space Mono',monospace",fontSize:11,marginBottom:22}}>Search or browse the full database</p>
-              <Btn onClick={()=>fetchGames("",filters,"rating",1)} variant="primary" style={{padding:"12px 26px",fontSize:12}}>Browse Top Rated →</Btn>
+            <div>
+              <TrendingSection onGameClick={setSelected} darkMode={darkMode}/>
+              <div style={{textAlign:"center",padding:"8px 20px 32px"}}>
+                <p style={{color:darkMode?"rgba(255,255,255,0.35)":"rgba(0,0,0,0.45)",fontFamily:"'Space Mono',monospace",fontSize:11,marginBottom:16}}>Or browse the full database of 500,000+ games</p>
+                <Btn onClick={()=>fetchGames("",filters,"rating",1)} variant="primary" style={{padding:"12px 26px",fontSize:12}}>Browse Top Rated →</Btn>
+              </div>
             </div>
           )}
 
@@ -2242,8 +2444,16 @@ export default function App() {
           )}
         </div>
 
-        <div style={{textAlign:"center",paddingBottom:26,color:darkMode?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.25)",fontSize:9,letterSpacing:2,fontFamily:"'Space Mono',monospace"}}>
-          WORTH MY TIME · RAWG.IO · HLTB · YOUR SCORES
+        <div style={{textAlign:"center",paddingBottom:26,display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
+          <button onClick={()=>setShowFAQ(true)}
+            style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",borderRadius:20,padding:"6px 16px",color:darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.35)",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace",transition:"all .2s"}}
+            onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(167,139,250,0.4)";e.currentTarget.style.color="#a78bfa";}}
+            onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,0.1)";e.currentTarget.style.color=darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.35)";}}>
+            ❓ FAQ & About
+          </button>
+          <div style={{color:darkMode?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.25)",fontSize:9,letterSpacing:2,fontFamily:"'Space Mono',monospace"}}>
+            WORTH MY TIME · RAWG.IO · HLTB · YOUR SCORES
+          </div>
         </div>
       </div>
 
@@ -2253,6 +2463,7 @@ export default function App() {
       <GameModal game={selected} onClose={()=>setSelected(null)} currentUser={user}/>
       {showEditProfile && user && <EditProfileModal user={user} onClose={()=>setShowEditProfile(false)} onSave={p=>setUserProfile(p)}/>}
       {viewProfile && user && <UserProfilePage profileEmail={viewProfile} currentUser={user} onClose={()=>setViewProfile(null)} onEditProfile={()=>{setViewProfile(null);setShowEditProfile(true);}}/>}
+      {showFAQ && <FAQModal onClose={()=>setShowFAQ(false)} darkMode={darkMode}/>}
     </>
   );
 }
