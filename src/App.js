@@ -2157,7 +2157,16 @@ export default function App() {
             <div style={{fontSize:10,color:darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.45)",fontFamily:"'Space Mono',monospace"}}>{total.toLocaleString()} games</div>
             <div style={{display:"flex",gap:5}}>
               {[["newest","🆕 Newest"],["rating","⭐ Top Rated"],["metacritic","📊 Metacritic"],["popular","🔥 Popular"]].map(([v,l])=>(
-                <button key={v} onClick={()=>{setSortBy(v);setPage(1);}} style={{background:sortBy===v?"rgba(167,139,250,0.2)":"transparent",color:sortBy===v?"#a78bfa":"rgba(255,255,255,0.3)",border:`1px solid ${sortBy===v?"#a78bfa50":"rgba(255,255,255,0.07)"}`,borderRadius:7,padding:"4px 9px",cursor:"pointer",fontSize:10,fontFamily:"'Space Mono',monospace",transition:"all .2s"}}>{l}</button>
+                <button key={v} onClick={()=>{setSortBy(v);setPage(1);}}
+                  style={{
+                    background: sortBy===v ? "rgba(167,139,250,0.2)" : darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.07)",
+                    color: sortBy===v ? "#a78bfa" : darkMode ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.65)",
+                    border: `1px solid ${sortBy===v ? "#a78bfa60" : darkMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.2)"}`,
+                    borderRadius:7, padding:"5px 10px", cursor:"pointer",
+                    fontSize:10, fontFamily:"'Space Mono',monospace",
+                    fontWeight: sortBy===v ? 700 : 400,
+                    transition:"all .2s"
+                  }}>{l}</button>
               ))}
             </div>
           </div>
