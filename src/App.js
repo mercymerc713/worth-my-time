@@ -1941,31 +1941,60 @@ export default function App() {
 
   const handleTimeSearch = () => {
     const m = parseInt(minutes); if (!m) return;
-    let timeGenres = "";
-    if (m <= 20)       timeGenres = "arcade,card-games,puzzle";
-    else if (m <= 40)  timeGenres = "puzzle,arcade,fighting,racing,sports,card-games";
-    else if (m <= 60)  timeGenres = "platformer,indie,fighting,puzzle,shooter,sports,racing";
-    else if (m <= 90)  timeGenres = "action,indie,platformer,shooter,adventure";
-    else if (m <= 120) timeGenres = "action,adventure,shooter,indie";
-    else               timeGenres = "role-playing-games-rpg,strategy,simulation,adventure";
 
-    // Clear search and reset page — time search is its own clean mode
+    // Each time window maps to DISTINCT genres so results never overlap
+    let timeGenres = "";
+    let ordering = "-released";
+
+    if (m <= 15) {
+      // Under 15 min — pure arcade, instant-play games
+      timeGenres = "arcade,card-games";
+      ordering = "-rating";
+    } else if (m <= 30) {
+      // 15–30 min — puzzle and quick sports
+      timeGenres = "puzzle,sports,racing";
+      ordering = "-rating";
+    } else if (m <= 45) {
+      // 30–45 min — fighting and platformers
+      timeGenres = "fighting,platformer";
+      ordering = "-released";
+    } else if (m <= 60) {
+      // 45–60 min — indie games designed for short sessions
+      timeGenres = "indie,shooter";
+      ordering = "-released";
+    } else if (m <= 90) {
+      // 60–90 min — action games with good pacing
+      timeGenres = "action,adventure";
+      ordering = "-released";
+    } else if (m <= 120) {
+      // 90–120 min — deeper action and adventure
+      timeGenres = "action-adventure,massively-multiplayer";
+      ordering = "-metacritic";
+    } else {
+      // 2+ hours — RPGs, strategy, simulation
+      timeGenres = "role-playing-games-rpg,strategy,simulation";
+      ordering = "-metacritic";
+    }
+
     setSearch("");
     setPage(1);
-    setFilters(DEFAULT_FILTERS); // reset all filters so nothing interferes
-    fetchGamesWithTime(timeGenres);
+    setFilters(DEFAULT_FILTERS);
+    fetchGamesWithTime(timeGenres, ordering);
   };
 
-  // Clear time search and go back to main browse
+  // Clear time search — go fully back to landing screen
   const handleClearTimeSearch = () => {
     setMinutes("");
     setSearch("");
     setPage(1);
     setGames([]);
-    setHasLoaded(false); // goes back to landing screen
+    setTotal(0);
+    setHasLoaded(false);
+    setFilters(DEFAULT_FILTERS);
+    setError("");
   };
 
-  const fetchGamesWithTime = useCallback(async (timeGenres) => {
+  const fetchGamesWithTime = useCallback(async (timeGenres, ordering="-released") => {
     setLoading(true); setError("");
     try {
       const todayDate = new Date().toISOString().split("T")[0];
@@ -1973,7 +2002,7 @@ export default function App() {
         key: RAWG_KEY,
         page_size: 40,
         page: 1,
-        ordering: "-released",
+        ordering,
         genres: timeGenres,
         dates: `2000-01-01,${todayDate}`,
         exclude_additions: "true",
