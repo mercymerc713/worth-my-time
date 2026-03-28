@@ -2,9 +2,14 @@
 // Place this file at: /api/send-code.js in your GitHub repo
 
 export default async function handler(req, res) {
-  // Restrict CORS to your production domain (update if you use a custom domain)
-  const allowed = process.env.APP_ORIGIN || "https://worthmytime.info";
-  res.setHeader("Access-Control-Allow-Origin", allowed);
+  // Allow requests from your Vercel deployment and any configured custom domain
+  const origin = req.headers.origin || "";
+  const allowedOrigins = [
+    process.env.APP_ORIGIN,
+    "https://worthmytime.info",
+  ].filter(Boolean);
+  const isAllowed = allowedOrigins.includes(origin) || origin.endsWith(".vercel.app");
+  res.setHeader("Access-Control-Allow-Origin", isAllowed ? origin : allowedOrigins[0]);
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 

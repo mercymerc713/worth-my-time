@@ -1066,7 +1066,7 @@ function AuthScreen({ onLogin }) {
           {[
             ["⏱","Session-Friendly Scores","Know before you play if a game fits 30 mins or needs 3 hours"],
             ["🎮","500,000+ Games","The full database, scored and filtered for time-pressed players"],
-            ["💰","One-Time Payment","No subscriptions — pay ${PRICE} once, keep access forever"],
+            ["💰","One-Time Payment",`No subscriptions — pay ${PRICE} once, keep access forever`],
           ].map(([icon,title,desc])=>(
             <div key={title} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:16,padding:"16px 18px",maxWidth:200,textAlign:"left",flex:"1 0 160px"}}>
               <div style={{fontSize:22,marginBottom:8}}>{icon}</div>
