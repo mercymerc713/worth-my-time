@@ -2,8 +2,9 @@
 // Place this file at: /api/send-code.js in your GitHub repo
 
 export default async function handler(req, res) {
-  // Allow CORS from your domain
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  // Restrict CORS to your production domain (update if you use a custom domain)
+  const allowed = process.env.APP_ORIGIN || "https://worthmytime.info";
+  res.setHeader("Access-Control-Allow-Origin", allowed);
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 

@@ -35,6 +35,12 @@ const sbHeaders = {
   "Prefer": "return=representation",
 };
 
+async function hashPassword(password) {
+  const data = new TextEncoder().encode(password);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
 async function sbFetch(path, options = {}) {
   const res = await fetch(`${SUPABASE_REST}${path}`, {
     ...options,
@@ -366,7 +372,7 @@ function CommunityReviews({ game, currentUser }) {
       )}
       <div style={{display:"flex",flexDirection:"column",gap:10,maxHeight:280,overflowY:"auto"}}>
         {reviews.map((r,i)=>(
-          <div key={i} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,padding:"10px 12px"}}>
+          <div key={`${r.userEmail}-${game.id}`} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,padding:"10px 12px"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <div style={{width:26,height:26,borderRadius:"50%",
@@ -554,16 +560,21 @@ function computeScores(game) {
   if (shortF.some(g=>names.includes(g))) t=Math.min(99,t+22);
   if (longF.some(g=>names.includes(g)))  t=Math.max(30,t-25);
   if (names.includes("Indie")) t=Math.min(99,t+8);
-  t=Math.round(t+(Math.random()*6-3));
+  // Deterministic noise seeded from game.id so scores are stable across renders
+  const _id = typeof game.id === "number" ? game.id : 0;
+  const n1 = ((_id * 7919) % 7) - 3;
+  const n2 = ((_id * 6271) % 9) - 4;
+  const n3 = ((_id * 5381) % 7) - 3;
+  t=Math.round(t+n1);
   let a=55;
   if (["RPG","Adventure","Action"].some(g=>names.includes(g))) a+=30;
   if (names.includes("Indie")) a+=10;
   if (mc>80) a+=10;
-  a=Math.min(99,Math.round(a+(Math.random()*8-4)));
+  a=Math.min(99,Math.round(a+n2));
   let w=Math.round((rating/5)*60+30);
   if (mc>85) w=Math.min(99,w+10);
   if (rc>1000) w=Math.min(99,w+5);
-  w=Math.round(w+(Math.random()*6-3));
+  w=Math.round(w+n3);
   return { t, a, w, hltb, difficulty:difficultyOf(genres), esrb:game.esrb_rating?.name||"Not Rated" };
   } catch { return { t:70, a:70, w:70, hltb:HLTB.default, difficulty:"Medium", esrb:"Not Rated" }; }
 }
@@ -757,34 +768,22 @@ function StatusBar({ user, onUpgrade, onLogout }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function PaywallModal({ user, onClose, onSuccess }) {
   const [step, setStep] = useState("offer"); // offer | payment | success
-  const [card, setCard] = useState({ number:"", expiry:"", cvc:"", name:"" });
-  const [loading, setLoading] = useState(false);
+  const [stripeOpened, setStripeOpened] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [verifyErr, setVerifyErr] = useState("");
   const [err, setErr] = useState("");
   const status = getAccountStatus(user);
 
-  const fmtCard = v => v.replace(/\D/g,"").replace(/(\d{4})/g,"$1 ").trim().slice(0,19);
-  const fmtExp  = v => v.replace(/\D/g,"").replace(/(\d{2})(\d)/,"$1/$2").slice(0,5);
-
-  const handlePay = async () => {
-    if (!card.number || !card.expiry || !card.cvc || !card.name) { setErr("Please fill in all fields."); return; }
-    setErr(""); setLoading(true);
-    try {
-      if (!window.Stripe) { throw new Error("Stripe.js not loaded yet. Please refresh and try again."); }
-      const stripe = window.Stripe(STRIPE_PK);
-      const { paymentMethod, error } = await stripe.createPaymentMethod({
-        type: "card",
-        card: { number: card.number.replace(/\s/g,""), exp_month: parseInt(card.expiry.split("/")[0]), exp_year: parseInt("20"+card.expiry.split("/")[1]), cvc: card.cvc },
-        billing_details: { name: card.name },
-      });
-      if (error) { setErr(error.message); setLoading(false); return; }
-      // Payment method created successfully — in production send paymentMethod.id to your backend to confirm charge
-      setLoading(false);
+  const verifyPayment = async () => {
+    setVerifying(true); setVerifyErr("");
+    const account = await sbGetAccount(user.email);
+    if (account?.is_paid) {
+      await onSuccess();
       setStep("success");
-      onSuccess();
-    } catch(e) {
-      setErr(e.message || "Payment failed. Please try again.");
-      setLoading(false);
+    } else {
+      setVerifyErr("Payment not confirmed yet. If you just paid, please wait a moment and try again.");
     }
+    setVerifying(false);
   };
 
   return (
@@ -858,9 +857,20 @@ function PaywallModal({ user, onClose, onSuccess }) {
                   </div>
                 ))}
               </div>
-              <Btn onClick={()=>window.open(STRIPE_PAYMENT_LINK,"_blank")} variant="gold" style={{width:"100%",fontSize:15,padding:"14px",borderRadius:13}}>
+              <Btn onClick={()=>{ window.open(STRIPE_PAYMENT_LINK,"_blank"); setStripeOpened(true); }} variant="gold" style={{width:"100%",fontSize:15,padding:"14px",borderRadius:13}}>
                 Pay {PRICE} Securely on Stripe →
               </Btn>
+              {stripeOpened && (
+                <div style={{marginTop:14}}>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace",textAlign:"center",marginBottom:10,lineHeight:1.6}}>
+                    Once you've completed checkout on Stripe, click below to activate your account.
+                  </div>
+                  <Btn onClick={verifyPayment} disabled={verifying} variant="purple" style={{width:"100%",fontSize:13,padding:"12px",borderRadius:13,opacity:verifying?0.7:1}}>
+                    {verifying ? "Verifying..." : "I've Completed Payment — Activate Access →"}
+                  </Btn>
+                  {verifyErr && <div style={{marginTop:8,fontSize:11,color:"#fca5a5",fontFamily:"'Space Mono',monospace",textAlign:"center"}}>{verifyErr}</div>}
+                </div>
+              )}
               <div style={{marginTop:10,fontSize:10,color:"rgba(255,255,255,0.25)",fontFamily:"'Space Mono',monospace"}}>
                 Powered by Stripe · No account required
               </div>
@@ -900,6 +910,7 @@ function AuthScreen({ onLogin }) {
   const [verifyCode, setVerifyCode] = useState("");
   const [enteredVerifyCode, setEnteredVerifyCode] = useState("");
   const [pendingUser, setPendingUser] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const validateEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e.trim());
 
@@ -919,7 +930,8 @@ function AuthScreen({ onLogin }) {
     if (sent) {
       setSuccess(`Reset code sent to ${email} — check your inbox and spam folder.`);
     } else {
-      setSuccess(`Couldn't send email. Your code is: ${code}`);
+      setErr("Failed to send reset email. Please check your email address and try again.");
+      return;
     }
     setResetStep(2);
   };
@@ -941,7 +953,7 @@ function AuthScreen({ onLogin }) {
     if (!newPass || newPass.length < 8) { setErr("Password must be at least 8 characters."); return; }
     const emailKey = email.toLowerCase().trim();
     // Update password in Supabase
-    const ok = await sbUpdateAccount(emailKey, { password_hash: btoa(newPass) });
+    const ok = await sbUpdateAccount(emailKey, { password_hash: await hashPassword(newPass) });
     if (!ok) { setErr("Failed to reset password. Please try again."); return; }
     await store.del(`wmt_reset_${emailKey}`);
     setSuccess("Password reset successfully! You can now sign in.");
@@ -953,6 +965,9 @@ function AuthScreen({ onLogin }) {
   const validatePassword = (p) => p.length >= 8;
 
   const submit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
     setErr("");
     if (!email) { setErr("Email address is required."); return; }
     if (!validateEmail(email)) { setErr("Please enter a valid email address."); return; }
@@ -971,13 +986,16 @@ function AuthScreen({ onLogin }) {
         // Generate and store verification code locally (temp)
         const code = Math.floor(100000 + Math.random() * 900000).toString();
         await store.set(`wmt_verify_${emailKey}`, { code, expiresAt: Date.now() + 15 * 60 * 1000 });
-        setPendingUser({ name: name.trim(), emailKey, passwordHash: btoa(pass) });
+        setPendingUser({ name: name.trim(), emailKey, passwordHash: await hashPassword(pass) });
 
         // Send verification email
         const sent = await sendVerificationEmail(emailKey, name.trim(), code);
-        setSuccess(sent
-          ? `Verification code sent to ${emailKey} — check your inbox and spam folder.`
-          : `Couldn't send email. Your code is: ${code}`);
+        if (!sent) {
+          setErr("Failed to send verification email. Please check your email address and try again.");
+          setVerifyStep(1);
+          return;
+        }
+        setSuccess(`Verification code sent to ${emailKey} — check your inbox and spam folder.`);
         setVerifyStep(2);
         return;
       }
@@ -1011,12 +1029,21 @@ function AuthScreen({ onLogin }) {
 
       const account = await sbGetAccount(emailKey);
       if (!account) { setErr("No account found with this email. Please create an account."); return; }
-      if (btoa(pass) !== account.password_hash) { setErr("Incorrect password. Please try again."); return; }
+      const hash = await hashPassword(pass);
+      if (hash !== account.password_hash) {
+        // Migrate legacy btoa-encoded passwords to SHA-256 on successful login
+        if (btoa(pass) === account.password_hash) {
+          await sbUpdateAccount(emailKey, { password_hash: hash });
+        } else {
+          setErr("Incorrect password. Please try again."); return;
+        }
+      }
 
       const user = accountToUser(account);
       await store.set("wmt_user", user); // cache session locally
       onLogin(user);
     }
+    } finally { setSubmitting(false); }
   };
 
   return (
@@ -1058,7 +1085,7 @@ function AuthScreen({ onLogin }) {
                     <Input placeholder="Password (min 8 characters)" type="password" value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
                   </div>
                   {err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>⚠ {err}</div>}
-                  <Btn onClick={submit} variant="purple" style={{width:"100%",marginTop:16}}>Send Verification Code →</Btn>
+                  <Btn onClick={submit} disabled={submitting} variant="purple" style={{width:"100%",marginTop:16,opacity:submitting?0.7:1}}>{submitting?"Sending...":"Send Verification Code →"}</Btn>
                   <div style={{marginTop:12,fontSize:10,color:"rgba(255,255,255,0.25)",fontFamily:"'Space Mono',monospace",textAlign:"center",lineHeight:1.6}}>
                     We'll verify your email before creating your account<br/>
                     7 days free · No credit card required · {PRICE} one-time after trial
@@ -1082,7 +1109,7 @@ function AuthScreen({ onLogin }) {
                     onChange={e=>setEnteredVerifyCode(e.target.value.replace(/\D/g,"").slice(0,6))}
                     onKeyDown={e=>e.key==="Enter"&&submit()}/>
                   {err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>⚠ {err}</div>}
-                  <Btn onClick={submit} variant="purple" style={{width:"100%",marginTop:14}}>Verify & Create Account →</Btn>
+                  <Btn onClick={submit} disabled={submitting} variant="purple" style={{width:"100%",marginTop:14,opacity:submitting?0.7:1}}>{submitting?"Creating account...":"Verify & Create Account →"}</Btn>
                   <button onClick={()=>{setVerifyStep(1);setErr("");setSuccess("");setEnteredVerifyCode("");}}
                     style={{display:"block",margin:"10px auto 0",background:"none",border:"none",color:"rgba(255,255,255,0.3)",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
                     ← Use a different email
@@ -1099,7 +1126,7 @@ function AuthScreen({ onLogin }) {
                   </div>
                   {err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>⚠ {err}</div>}
                   {success && <div style={{color:"#4ade80",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:8}}>✓ {success}</div>}
-                  <Btn onClick={submit} variant="purple" style={{width:"100%",marginTop:16}}>Sign In →</Btn>
+                  <Btn onClick={submit} disabled={submitting} variant="purple" style={{width:"100%",marginTop:16,opacity:submitting?0.7:1}}>{submitting?"Signing in...":"Sign In →"}</Btn>
                   <button onClick={()=>{setMode("forgot");setErr("");setSuccess("");setResetStep(1);}}
                     style={{display:"block",margin:"12px auto 0",background:"none",border:"none",color:"rgba(255,255,255,0.35)",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",textDecoration:"underline"}}>
                     Forgot your password?
@@ -1197,7 +1224,6 @@ function GameCard({ game, onClick, locked, darkMode=true }) {
         border:`1px solid ${hov?color+"70":"rgba(255,255,255,0.07)"}`,
         transform:hov?"translateY(-4px) scale(1.01)":"translateY(0) scale(1)",
         transition:"all .28s cubic-bezier(.4,0,.2,1)",
-        boxShadow:hov?`0 20px 60px ${color}30`:"0 2px 12px rgba(0,0,0,0.4)",
         background:darkMode?"#0d0d18":"#ffffff",
         filter:locked?"blur(2px) brightness(0.5)":"none",
         boxShadow:hov?`0 20px 60px ${color}30`:darkMode?"0 2px 12px rgba(0,0,0,0.4)":"0 2px 12px rgba(0,0,0,0.1)"}}>
@@ -1277,12 +1303,13 @@ const ACHIEVEMENTS = [
   { id:"early_adopter",  icon:"🚀",  label:"Early Adopter",    desc:"Joined Worth My Time in early access",color:"#f87171" },
 ];
 
-function computeAchievements(profile, reviews, followers) {
+function computeAchievements(profile, reviews, followers, following=[]) {
   const earned = ["early_adopter"]; // everyone gets this
   if (reviews.length >= 1)  earned.push("first_review");
   if (reviews.length >= 5)  earned.push("review_5");
   if (reviews.length >= 10) earned.push("review_10");
   if (reviews.length >= 25) earned.push("review_25");
+  if (following.length >= 1)  earned.push("first_follow");
   if (followers.length >= 10) earned.push("follower_10");
   if ((profile?.showcase_games||[]).length > 0) earned.push("showcase");
   if ((profile?.backlog||[]).length >= 5) earned.push("backlog");
@@ -1505,7 +1532,7 @@ function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile }) 
 
   const displayName = profile?.gamer_tag || profileEmail.split("@")[0];
   const avatarColor = profile?.avatar_color || "#a78bfa";
-  const achievements = computeAchievements(profile, reviews, followers);
+  const achievements = computeAchievements(profile, reviews, followers, following);
   const showcase = profile?.showcase_games || [];
   const backlog = profile?.backlog || [];
 
@@ -1613,7 +1640,7 @@ function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile }) 
             ) : (
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
                 {reviews.map((r,i)=>(
-                  <div key={i} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"14px 16px"}}>
+                  <div key={`${r.user_email}-${r.game_id || i}`} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"14px 16px"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                       <div style={{fontSize:14,color:"white",fontWeight:700,fontFamily:"'Bitter',serif"}}>{r.game_name}</div>
                       <div style={{display:"flex",gap:1}}>{[1,2,3,4,5].map(s=><span key={s} style={{fontSize:13,color:s<=r.rating?"#fbbf24":"rgba(255,255,255,0.15)"}}>★</span>)}</div>
@@ -1697,9 +1724,9 @@ function GameModal({ game, onClose, currentUser }) {
           <div style={{fontSize:9,color,fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:4}}>{(game.genres||[]).map(g=>g.name).join(" · ")}</div>
           <h2 style={{margin:"0 0 10px",fontSize:22,fontFamily:"'Bitter',serif",color:"white",lineHeight:1.2}}>{game.name}</h2>
           <div style={{display:"flex",justifyContent:"space-around",marginBottom:18,padding:12,background:"rgba(255,255,255,0.03)",borderRadius:14,border:"1px solid rgba(255,255,255,0.06)"}}>
-            <ScoreRing value={scores.t} label="Time Friendly" color={color} size={68}/>
-            <ScoreRing value={scores.a} label="Adventure"     color={color} size={68}/>
-            <ScoreRing value={scores.w} label="Worth It"      color={color} size={68}/>
+            <ScoreRing value={scores.t} label="Time"      color={color} size={68}/>
+            <ScoreRing value={scores.a} label="Adventure" color={color} size={68}/>
+            <ScoreRing value={scores.w} label="Worth It"  color={color} size={68}/>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
             {[["⏱ Session",scores.hltb.session],["📖 Story",scores.hltb.main],["🏆 100%",scores.hltb.complete],["🎯 Difficulty",scores.difficulty],["⭐ Rating",game.rating?`${game.rating.toFixed(1)}/5`:"Unrated"],["📊 Metacritic",game.metacritic||"No score"],["🔞 Age Rating", scores.esrb==="Not Rated"?"Unrated":scores.esrb==="Everyone"?"E — Everyone":scores.esrb==="Everyone 10+"?"E10+ — Everyone 10+":scores.esrb==="Teen"?"T — Teen (13+)":scores.esrb==="Mature"?"M — Mature (17+)":scores.esrb==="Adults Only"?"AO — Adults Only (18+)":scores.esrb==="Rating Pending"?"Rating Pending":scores.esrb],["📅 Released",game.released?new Date(game.released).toLocaleDateString("en-US",{year:"numeric",month:"short"}):"Unknown"]].map(([k,v])=>(
@@ -1813,13 +1840,12 @@ export default function App() {
   const handleLogin = async (u) => { await store.set("wmt_user", u); setUser(u); };
   const handleLogout = async () => { await store.del("wmt_user"); setUser(null); setGames([]); setHasLoaded(false); };
   const handlePaid = async () => {
-    const updated = { ...user, isPaid:true, paidAt:Date.now() };
-    // Update in Supabase
-    await sbUpdateAccount(user.email, { is_paid: true, paid_at: Date.now() });
-    // Update local session cache
+    // Re-fetch from Supabase to get the authoritative paid status set by the webhook
+    const fresh = await sbGetAccount(user.email);
+    const updated = fresh ? accountToUser(fresh) : { ...user, isPaid:true, paidAt:Date.now() };
     await store.set("wmt_user", updated);
     setUser(updated);
-    setShowPaywall(false);
+    // Modal stays open so the success step can be shown; it closes via onClose
   };
 
   const fetchGames = useCallback(async (q, f, sort, pg) => {
@@ -2024,11 +2050,10 @@ export default function App() {
   }, []);
 
   if (!appReady) return <div style={{minHeight:"100vh",background:"#07070f",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",fontSize:12}}>Loading...</div></div>;
-  if (!user) return <><link href="https://fonts.googleapis.com/css2?family=Bitter:wght@700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/><style>{`*{box-sizing:border-box}body{margin:0}input{color-scheme:dark}input::placeholder{color:rgba(255,255,255,0.22)}input:focus{outline:none;border-color:rgba(167,139,250,0.4)!important}`}</style><AuthScreen onLogin={handleLogin}/></>;
+  if (!user) return <><style>{`*{box-sizing:border-box}body{margin:0}input{color-scheme:dark}input::placeholder{color:rgba(255,255,255,0.22)}input:focus{outline:none;border-color:rgba(167,139,250,0.4)!important}`}</style><AuthScreen onLogin={handleLogin}/></>;
 
   return (
     <>
-      <link href="https://fonts.googleapis.com/css2?family=Bitter:wght@700;900&family=Space+Mono:wght@400;700&family=Lora:ital@1&display=swap" rel="stylesheet"/>
       <style>{`*{box-sizing:border-box}body{margin:0}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#0d0d18}::-webkit-scrollbar-thumb{background:#2a2a3e;border-radius:3px}input::placeholder{color:rgba(255,255,255,0.25)}input:focus{outline:none;border-color:rgba(255,255,255,0.25)!important}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}.card-anim{animation:fadeIn .4s ease forwards;opacity:0}`}</style>
 
       <div style={{minHeight:"100vh",background:darkMode?"#080810":"#f4f4f8",backgroundImage:darkMode?"radial-gradient(ellipse at 15% 15%,#1a0a2e 0%,transparent 45%),radial-gradient(ellipse at 85% 85%,#0a1628 0%,transparent 45%)":"radial-gradient(ellipse at 15% 15%,#e0d7ff 0%,transparent 45%),radial-gradient(ellipse at 85% 85%,#d7e8ff 0%,transparent 45%)",transition:"background .3s,color .3s"}}>
@@ -2223,7 +2248,7 @@ export default function App() {
       </div>
 
       {/* Modals */}
-      {status==="expired" && !showPaywall && games.length===0 && hasLoaded && <LockedOverlay onUpgrade={()=>setShowPaywall(true)}/>}
+      {status==="expired" && !showPaywall && <LockedOverlay onUpgrade={()=>setShowPaywall(true)}/>}
       {showPaywall && <PaywallModal user={user} onClose={()=>setShowPaywall(false)} onSuccess={handlePaid}/>}
       <GameModal game={selected} onClose={()=>setSelected(null)} currentUser={user}/>
       {showEditProfile && user && <EditProfileModal user={user} onClose={()=>setShowEditProfile(false)} onSave={p=>setUserProfile(p)}/>}
