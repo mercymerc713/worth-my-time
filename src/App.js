@@ -693,7 +693,7 @@ function ScoreRing({ value, color, label, size=64, darkMode=true }) {
           {value}
         </text>
       </svg>
-      <span style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.35)":"rgba(0,0,0,0.45)",letterSpacing:1.2,textTransform:"uppercase",fontFamily:"'Space Mono',monospace"}}>{label} ⓘ</span>
+      <span style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.35)":"#333333",letterSpacing:1.2,textTransform:"uppercase",fontFamily:"'Space Mono',monospace"}}>{label} ⓘ</span>
     </div>
   );
 }
@@ -1211,7 +1211,7 @@ function GameCard({ game, onClick, locked, darkMode=true }) {
       </div>
       <div style={{padding:"11px 13px 13px"}}>
         <h3 style={{margin:"0 0 3px",fontSize:14,fontFamily:"'Bitter',serif",fontWeight:700,color:darkMode?"white":"#0f0f1a",lineHeight:1.2,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{game.name}</h3>
-        <div style={{fontSize:10,color:darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.45)",fontFamily:"'Space Mono',monospace",marginBottom:7}}>
+        <div style={{fontSize:10,color:darkMode?"rgba(255,255,255,0.3)":"#444444",fontFamily:"'Space Mono',monospace",marginBottom:7}}>
           {(game.genres||[]).slice(0,2).map(g=>g.name).join(" · ")}
         </div>
         <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>
@@ -2073,7 +2073,7 @@ export default function App() {
         {/* Header */}
         <div style={{textAlign:"center",padding:"32px 20px 20px"}}>
           <h1 style={{margin:"0 0 6px",fontSize:"clamp(30px,6vw,54px)",fontFamily:"'Bitter',serif",fontWeight:900,color:darkMode?"white":"#0f0f1a",lineHeight:1.05,letterSpacing:-1}}>Worth My Time?</h1>
-          <p style={{color:darkMode?"rgba(255,255,255,0.38)":"rgba(0,0,0,0.6)",fontSize:13,margin:"0 auto",maxWidth:340,lineHeight:1.7,fontFamily:"'Lora',serif",fontStyle:"italic"}}>
+          <p style={{color:darkMode?"rgba(255,255,255,0.38)":"#333333",fontSize:13,margin:"0 auto",maxWidth:340,lineHeight:1.7,fontFamily:"'Lora',serif",fontStyle:"italic"}}>
             Real game intelligence for busy people.
           </p>
         </div>
@@ -2081,7 +2081,7 @@ export default function App() {
         {/* Quick Finder */}
         <div style={{maxWidth:540,margin:"0 auto 16px",padding:"0 16px"}}>
           <div style={{background:darkMode?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.05)",border:`1px solid ${darkMode?"rgba(255,255,255,0.09)":"rgba(0,0,0,0.15)"}`,borderRadius:14,padding:14}}>
-            <div style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.35)":"rgba(0,0,0,0.55)",fontFamily:"'Space Mono',monospace",letterSpacing:2,marginBottom:8,fontWeight:700}}>⚡ I HAVE THIS MANY MINUTES</div>
+            <div style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.35)":"#111111",fontFamily:"'Space Mono',monospace",letterSpacing:2,marginBottom:8,fontWeight:800}}>⚡ I HAVE THIS MANY MINUTES</div>
             <div style={{display:"flex",gap:8}}>
               <Input placeholder="e.g. 45" type="number" value={minutes}
                 onChange={e=>{ const v=e.target.value; setMinutes(v); if(!v) handleClearTimeSearch(); }}
@@ -2109,7 +2109,7 @@ export default function App() {
         {/* Filter Toggle */}
         {access && (
           <div style={{maxWidth:900,margin:"0 auto 14px",padding:"0 16px"}}>
-            <button onClick={()=>setShowFilters(!showFilters)} style={{background:darkMode?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.07)",border:`1px solid ${darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.2)"}`,borderRadius:11,padding:"9px 16px",color:darkMode?"rgba(255,255,255,0.6)":"rgba(0,0,0,0.75)",cursor:"pointer",fontSize:11,fontFamily:"'Space Mono',monospace",display:"flex",alignItems:"center",gap:8}}>
+            <button onClick={()=>setShowFilters(!showFilters)} style={{background:darkMode?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.07)",border:`1px solid ${darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.2)"}`,borderRadius:11,padding:"9px 16px",color:darkMode?"rgba(255,255,255,0.6)":"#111111",cursor:"pointer",fontSize:11,fontFamily:"'Space Mono',monospace",display:"flex",alignItems:"center",gap:8}}>
               ⚙ Filters {showFilters?"▲":"▼"}
             </button>
             {showFilters && (
@@ -2122,7 +2122,7 @@ export default function App() {
                   ["👥 PLAY STYLE",[["all","All"],["singleplayer","Solo"],["multiplayer","Multi"],["co-op","Co-op"]], "multiplayer", "#34d399"],
                 ].map(([label, opts, key, color])=>(
                   <div key={key}>
-                    <div style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.45)",fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:6}}>{label}</div>
+                    <div style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.3)":"#111111",fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:6,fontWeight:700}}>{label}</div>
                     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                       {opts.map(([v,l])=>{
                         const active=filters[key]===v;
@@ -2154,7 +2154,7 @@ export default function App() {
         {/* Sort & count */}
         {hasLoaded && (
           <div style={{maxWidth:900,margin:"0 auto 12px",padding:"0 16px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-            <div style={{fontSize:10,color:darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.6)",fontFamily:"'Space Mono',monospace",fontWeight:500}}>{total.toLocaleString()} games</div>
+            <div style={{fontSize:10,color:darkMode?"rgba(255,255,255,0.3)":"#222222",fontFamily:"'Space Mono',monospace",fontWeight:700}}>{total.toLocaleString()} games</div>
             <div style={{display:"flex",gap:5}}>
               {[["newest","🆕 Newest"],["rating","⭐ Top Rated"],["metacritic","📊 Metacritic"],["popular","🔥 Popular"]].map(([v,l])=>(
                 <button key={v} onClick={()=>{setSortBy(v);setPage(1);}}
