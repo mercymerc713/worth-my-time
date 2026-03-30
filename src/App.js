@@ -1388,6 +1388,73 @@ function TrendingSection({ onGameClick, darkMode }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PRIVACY POLICY MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+function PrivacyModal({ onClose }) {
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(12px)"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0d0d18",border:"1px solid rgba(255,255,255,0.1)",borderRadius:24,width:"100%",maxWidth:520,maxHeight:"85vh",overflowY:"auto",padding:28,position:"relative"}}>
+        <button onClick={onClose} style={{position:"absolute",top:14,right:14,background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.12)",color:"white",borderRadius:10,width:32,height:32,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+        <div style={{fontSize:9,color:"#a78bfa",fontFamily:"'Space Mono',monospace",letterSpacing:2,marginBottom:6}}>LEGAL</div>
+        <h2 style={{margin:"0 0 18px",fontSize:20,fontFamily:"'Bitter',serif",color:"white"}}>Privacy Policy</h2>
+        <div style={{fontSize:12,color:"rgba(255,255,255,0.6)",fontFamily:"'Space Mono',monospace",lineHeight:1.85,display:"flex",flexDirection:"column",gap:16}}>
+          <p style={{margin:0}}><span style={{color:"white",fontWeight:700}}>Last updated: {new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}</span></p>
+          {[
+            ["What we collect", "When you create an account we store your email address, display name, and a hashed (encrypted) version of your password. We also store game reviews and ratings you submit, and the list of players you follow."],
+            ["How we use it", "Your data is used solely to operate Worth My Time — to authenticate you, save your reviews, and power the community feed. We do not sell your data, share it with advertisers, or use it for any purpose outside the app."],
+            ["Payments", "Payments are processed by Stripe. We never see or store your card details. Stripe's privacy policy applies to payment data: stripe.com/privacy."],
+            ["Email", "We send a one-time verification code when you sign up or reset your password. We do not send marketing emails without your consent."],
+            ["Data storage", "Your data is stored in Supabase (PostgreSQL), hosted in the United States. By using this service you consent to your data being stored there."],
+            ["Cookies & tracking", "We do not use tracking cookies or third-party analytics. The only storage used is your browser's localStorage to keep you logged in."],
+            ["Data deletion", "To delete your account and all associated data, email us at support@worthmytime.info. We will process your request within 30 days."],
+            ["Contact", "Questions about this policy? Email support@worthmytime.info."],
+          ].map(([title, body]) => (
+            <div key={title}>
+              <div style={{color:"#a78bfa",marginBottom:4,fontSize:11,letterSpacing:0.5}}>{title}</div>
+              <p style={{margin:0}}>{body}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TERMS OF SERVICE MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+function TermsModal({ onClose }) {
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(12px)"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0d0d18",border:"1px solid rgba(255,255,255,0.1)",borderRadius:24,width:"100%",maxWidth:520,maxHeight:"85vh",overflowY:"auto",padding:28,position:"relative"}}>
+        <button onClick={onClose} style={{position:"absolute",top:14,right:14,background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.12)",color:"white",borderRadius:10,width:32,height:32,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+        <div style={{fontSize:9,color:"#a78bfa",fontFamily:"'Space Mono',monospace",letterSpacing:2,marginBottom:6}}>LEGAL</div>
+        <h2 style={{margin:"0 0 18px",fontSize:20,fontFamily:"'Bitter',serif",color:"white"}}>Terms of Service</h2>
+        <div style={{fontSize:12,color:"rgba(255,255,255,0.6)",fontFamily:"'Space Mono',monospace",lineHeight:1.85,display:"flex",flexDirection:"column",gap:16}}>
+          <p style={{margin:0}}><span style={{color:"white",fontWeight:700}}>Last updated: {new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}</span></p>
+          {[
+            ["Acceptance", "By creating an account or using Worth My Time you agree to these terms. If you do not agree, do not use the service."],
+            ["The service", "Worth My Time provides game discovery tools, scoring, and community features. Game data is sourced from RAWG.io and HowLongToBeat. Scores are algorithmically generated estimates — not guarantees."],
+            ["Your account", "You are responsible for keeping your login credentials secure. You must be 13 years or older to use this service. One account per person."],
+            ["Payments & access", `A one-time payment of ${PRICE} grants lifetime access to all features. A ${TRIAL_DAYS}-day free trial is available with no payment required. All sales are final — we do not offer refunds except where required by law.`],
+            ["User content", "Reviews and ratings you post are your own. By submitting content you grant Worth My Time a license to display it within the app. Do not post content that is illegal, hateful, or harassing."],
+            ["Prohibited use", "You may not attempt to scrape, reverse-engineer, or abuse the service. Automated access without permission is prohibited."],
+            ["Disclaimers", "The service is provided as-is. We make no warranty that it will be uninterrupted or error-free. Game scores and time estimates are approximations only."],
+            ["Changes", "We may update these terms at any time. Continued use of the service after changes constitutes acceptance."],
+            ["Contact", "Questions? Email support@worthmytime.info."],
+          ].map(([title, body]) => (
+            <div key={title}>
+              <div style={{color:"#a78bfa",marginBottom:4,fontSize:11,letterSpacing:0.5}}>{title}</div>
+              <p style={{margin:0}}>{body}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // FAQ MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 function FAQModal({ onClose, darkMode=true }) {
@@ -2375,6 +2442,8 @@ export default function App() {
   const [viewProfile, setViewProfile] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [showFAQ, setShowFAQ] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
   const [activeView, setActiveView] = useState("discover"); // discover | community
   const debRef = useRef(null);
 
@@ -2854,6 +2923,15 @@ export default function App() {
             onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,0.1)";e.currentTarget.style.color=darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.35)";}}>
             ❓ FAQ & About
           </button>
+          <div style={{display:"flex",gap:14,alignItems:"center"}}>
+            {[["Privacy Policy",()=>setShowPrivacy(true)],["Terms of Service",()=>setShowTerms(true)]].map(([label,fn])=>(
+              <button key={label} onClick={fn} style={{background:"none",border:"none",color:darkMode?"rgba(255,255,255,0.2)":"rgba(0,0,0,0.3)",fontSize:9,cursor:"pointer",fontFamily:"'Space Mono',monospace",padding:0,transition:"color .2s",letterSpacing:0.5}}
+                onMouseEnter={e=>e.currentTarget.style.color="#a78bfa"}
+                onMouseLeave={e=>e.currentTarget.style.color=darkMode?"rgba(255,255,255,0.2)":"rgba(0,0,0,0.3)"}>
+                {label}
+              </button>
+            ))}
+          </div>
           <div style={{color:darkMode?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.25)",fontSize:9,letterSpacing:2,fontFamily:"'Space Mono',monospace"}}>
             WORTH MY TIME · RAWG.IO · HLTB · YOUR SCORES
           </div>
@@ -2867,6 +2945,8 @@ export default function App() {
       {showEditProfile && user && <EditProfileModal user={user} onClose={()=>setShowEditProfile(false)} onSave={p=>setUserProfile(p)}/>}
       {viewProfile && user && <UserProfilePage profileEmail={viewProfile} currentUser={user} onClose={()=>setViewProfile(null)} onEditProfile={()=>{setViewProfile(null);setShowEditProfile(true);}}/>}
       {showFAQ && <FAQModal onClose={()=>setShowFAQ(false)} darkMode={darkMode}/>}
+      {showPrivacy && <PrivacyModal onClose={()=>setShowPrivacy(false)}/>}
+      {showTerms && <TermsModal onClose={()=>setShowTerms(false)}/>}
     </>
   );
 }
