@@ -5,29 +5,31 @@ export default async function handler(req, res) {
   const { name } = req.query;
   if (!name) return res.status(400).json({ deals: [] });
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 9000);
+
   try {
-    // Step 1: find game ID by title
-    const searchRes = await fetch(
-      `https://api.isthereanydeal.com/games/search/v1?key=${ITAD_KEY}&title=${encodeURIComponent(name)}`,
-      { headers: { "User-Agent": "Mozilla/5.0" } }
+    // Step 1: lookup game ID
+    const lookupRes = await fetch(
+      `https://api.isthereanydeal.com/games/lookup/v1?key=${ITAD_KEY}&title=${encodeURIComponent(name)}`,
+      { headers: { "User-Agent": "Mozilla/5.0" }, signal: controller.signal }
     );
-    if (!searchRes.ok) return res.status(200).json({ deals: [] });
-    const searchData = await searchRes.json();
-    if (!searchData?.length) return res.status(200).json({ deals: [] });
+    if (!lookupRes.ok) { clearTimeout(timeout); return res.status(200).json({ deals: [] }); }
+    const lookupData = await lookupRes.json();
+    const gameId = lookupData?.game?.id;
+    if (!gameId) { clearTimeout(timeout); return res.status(200).json({ deals: [] }); }
 
-    // Match closest title
-    const query = name.toLowerCase();
-    const match = searchData.find(g => g.title?.toLowerCase() === query) || searchData[0];
-
-    // Step 2: get current prices
+    // Step 2: get prices
     const pricesRes = await fetch(
       `https://api.isthereanydeal.com/games/prices/v3?key=${ITAD_KEY}&country=US`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json", "User-Agent": "Mozilla/5.0" },
-        body: JSON.stringify([match.id]),
+        body: JSON.stringify([gameId]),
+        signal: controller.signal,
       }
     );
+    clearTimeout(timeout);
     if (!pricesRes.ok) return res.status(200).json({ deals: [] });
     const pricesData = await pricesRes.json();
     const deals = pricesData?.[0]?.deals || [];
@@ -41,14 +43,15 @@ export default async function handler(req, res) {
         url: d.url || null,
       }))
       .sort((a, b) => {
-        const pa = parseFloat(a.price.replace("$", "")) || 0;
-        const pb = parseFloat(b.price.replace("$", "")) || 0;
+        const pa = a.price === "Free" ? 0 : parseFloat(a.price.replace("$", "")) || 999;
+        const pb = b.price === "Free" ? 0 : parseFloat(b.price.replace("$", "")) || 999;
         return pa - pb;
       });
 
     res.setHeader("Cache-Control", "s-maxage=1800, stale-while-revalidate");
     return res.status(200).json({ deals: formatted });
   } catch {
+    clearTimeout(timeout);
     return res.status(200).json({ deals: [] });
   }
 }

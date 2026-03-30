@@ -1,28 +1,42 @@
 export default async function handler(req, res) {
   const { name } = req.query;
   if (!name) return res.status(400).json({});
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
   try {
     const searchRes = await fetch(
       `https://api.opencritic.com/api/game/search?criteria=${encodeURIComponent(name)}`,
-      { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" } }
+      { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" }, signal: controller.signal }
     );
-    if (!searchRes.ok) return res.status(searchRes.status).json({});
+    if (!searchRes.ok) { clearTimeout(timeout); return res.status(200).json({}); }
     const results = await searchRes.json();
-    if (!Array.isArray(results) || !results.length) return res.status(200).json({});
+    if (!Array.isArray(results) || !results.length) { clearTimeout(timeout); return res.status(200).json({}); }
 
-    // Match exact name first, fall back to first result
     const query = name.toLowerCase();
     const match = results.find(r => r.name?.toLowerCase() === query) || results[0];
 
-    // Search results include topCriticScore and percentRecommended — no second call needed
-    const score = match.topCriticScore != null ? Math.round(match.topCriticScore) : -1;
-    const tier = match.tier || null;
-    const percentRecommended = match.percentRecommended != null ? Math.round(match.percentRecommended) : null;
-    const numReviews = match.numReviews || 0;
+    const gameRes = await fetch(
+      `https://api.opencritic.com/api/game/${match.id}`,
+      { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" }, signal: controller.signal }
+    );
+    clearTimeout(timeout);
+    if (!gameRes.ok) return res.status(200).json({});
+    const g = await gameRes.json();
+
+    const score = g.topCriticScore != null && g.topCriticScore >= 0 ? Math.round(g.topCriticScore) : -1;
+    if (score < 0) return res.status(200).json({});
 
     res.setHeader("Cache-Control", "s-maxage=86400, stale-while-revalidate");
-    return res.status(200).json({ score, tier, numReviews, percentRecommended });
+    return res.status(200).json({
+      score,
+      tier: g.tier || null,
+      numReviews: g.numReviews || 0,
+      percentRecommended: g.percentRecommended != null ? Math.round(g.percentRecommended) : null,
+    });
   } catch {
-    return res.status(500).json({});
+    clearTimeout(timeout);
+    return res.status(200).json({});
   }
 }
