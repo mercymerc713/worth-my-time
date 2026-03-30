@@ -440,13 +440,16 @@ async function getProfile(email) {
 
 async function upsertProfile(profile) {
   try {
-    await sbFetch("/profiles", {
+    const res = await sbFetch("/profiles", {
       method: "POST",
       headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
       body: JSON.stringify(profile),
     });
     return true;
-  } catch { return false; }
+  } catch(e) {
+    console.error("upsertProfile error:", e);
+    throw e;
+  }
 }
 
 async function getProfileByTag(gamerTag) {
@@ -1740,15 +1743,19 @@ function EditProfileModal({ user, onClose, onSave }) {
     setErr("");
     if (gamerTag && !/^[a-zA-Z0-9_]{3,20}$/.test(gamerTag)) { setErr("Gamer tag: 3-20 chars, letters/numbers/underscores only."); return; }
     setSaving(true);
-    if (gamerTag) {
-      const existing = await getProfileByTag(gamerTag);
-      if (existing && existing.user_email !== user.email) { setErr("That gamer tag is taken."); setSaving(false); return; }
+    try {
+      if (gamerTag) {
+        const existing = await getProfileByTag(gamerTag);
+        if (existing && existing.user_email !== user.email) { setErr("That gamer tag is taken."); setSaving(false); return; }
+      }
+      const profile = { user_email: user.email, gamer_tag: gamerTag||null, bio: bio||null, status: status||null, avatar_emoji: avatarEmoji, avatar_color: avatarColor, avatar_url: avatarUrl||null, banner_url: bannerUrl||null };
+      await upsertProfile(profile);
+      onSave(profile);
+      onClose();
+    } catch(e) {
+      setErr("Failed to save profile. Please try again.");
     }
-    const profile = { user_email: user.email, gamer_tag: gamerTag||null, bio: bio||null, status: status||null, avatar_emoji: avatarEmoji, avatar_color: avatarColor, avatar_url: avatarUrl||null, banner_url: bannerUrl||null };
-    await upsertProfile(profile);
-    onSave(profile);
     setSaving(false);
-    onClose();
   };
 
   const inputStyle = {width:"100%",background:"rgba(0,0,0,0.4)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"11px 14px",color:"white",fontSize:12,fontFamily:"'Space Mono',monospace",boxSizing:"border-box"};
