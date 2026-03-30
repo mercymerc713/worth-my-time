@@ -910,6 +910,16 @@ function AuthScreen({ onLogin }) {
   const [verifyCode, setVerifyCode] = useState("");
   const [enteredVerifyCode, setEnteredVerifyCode] = useState("");
   const [pendingUser, setPendingUser] = useState(null);
+  const [showcaseGames, setShowcaseGames] = useState([]);
+
+  useEffect(() => {
+    const randomPage = Math.floor(Math.random() * 15) + 1;
+    const todayDate = new Date().toISOString().split("T")[0];
+    fetch(`${RAWG_BASE}/games?key=${RAWG_KEY}&page_size=20&page=${randomPage}&ordering=-rating&metacritic=75,100&dates=2010-01-01,${todayDate}&exclude_additions=true`)
+      .then(r => r.json())
+      .then(d => setShowcaseGames((d.results||[]).filter(g=>g.background_image).slice(0,14)))
+      .catch(()=>{});
+  }, []);
   const [submitting, setSubmitting] = useState(false);
 
   const validateEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e.trim());
@@ -1076,6 +1086,22 @@ function AuthScreen({ onLogin }) {
           ))}
         </div>
       </div>
+
+      {/* ── GAME SHOWCASE STRIP ── */}
+      {showcaseGames.length > 0 && (
+        <div style={{overflow:"hidden",marginBottom:36,maskImage:"linear-gradient(to right,transparent,black 8%,black 92%,transparent)",WebkitMaskImage:"linear-gradient(to right,transparent,black 8%,black 92%,transparent)"}}>
+          <div style={{display:"flex",gap:10,padding:"4px 40px",overflowX:"auto",scrollbarWidth:"none"}}
+            ref={el=>{ if(el){ el.style.cssText+="scrollbar-width:none;-ms-overflow-style:none;"; } }}>
+            {showcaseGames.map(g=>(
+              <div key={g.id} style={{flexShrink:0,width:130,height:78,borderRadius:10,overflow:"hidden",border:"1px solid rgba(255,255,255,0.07)",position:"relative"}}>
+                <img src={g.background_image} alt={g.name} style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.7}}/>
+                <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,0.7),transparent 50%)"}}/>
+                <div style={{position:"absolute",bottom:5,left:7,right:7,fontSize:8,color:"rgba(255,255,255,0.75)",fontFamily:"'Space Mono',monospace",lineHeight:1.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{g.name}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── AUTH FORM ── */}
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"0 20px 60px"}}>
