@@ -1094,7 +1094,7 @@ function AuthScreen({ onLogin }) {
             ref={el=>{ if(el){ el.style.cssText+="scrollbar-width:none;-ms-overflow-style:none;"; } }}>
             {showcaseGames.map(g=>(
               <div key={g.id} style={{flexShrink:0,width:130,height:78,borderRadius:10,overflow:"hidden",border:"1px solid rgba(255,255,255,0.07)",position:"relative"}}>
-                <img src={g.background_image} alt={g.name} style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.7}}/>
+                <img src={g.background_image} alt={g.name} loading="lazy" decoding="async" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.7}}/>
                 <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,0.7),transparent 50%)"}}/>
                 <div style={{position:"absolute",bottom:5,left:7,right:7,fontSize:8,color:"rgba(255,255,255,0.75)",fontFamily:"'Space Mono',monospace",lineHeight:1.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{g.name}</div>
               </div>
@@ -1303,8 +1303,7 @@ function RecommendationsSection({ user, onGameClick, darkMode }) {
               onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow=`0 12px 30px ${color}35`;}}
               onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="none";}}>
               <div style={{height:88,overflow:"hidden",position:"relative",background:"#1a1a2e"}}>
-                <img src={game.background_image} alt={game.name} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.85}}/>
-                <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,#0d0d18,transparent 60%)"}}/>
+                <img src={game.background_image} alt={game.name} loading="lazy" decoding="async" style={{width:"100%",height:"100%",objectFit:"cover",opacity:.85}}/>
                 {game.metacritic && <div style={{position:"absolute",top:5,right:5,background:game.metacritic>74?"#16a34a":game.metacritic>59?"#ca8a04":"#dc2626",borderRadius:5,padding:"1px 5px",fontSize:9,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>MC {game.metacritic}</div>}
               </div>
               <div style={{padding:"8px 10px"}}>
@@ -1391,7 +1390,7 @@ function TrendingSection({ onGameClick, darkMode }) {
                 onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="none";}}>
                 <div style={{height:88,overflow:"hidden",position:"relative",background:"#1a1a2e"}}>
                   {game.background_image
-                    ? <img src={game.background_image} alt={game.name} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.85}}/>
+                    ? <img src={game.background_image} alt={game.name} loading="lazy" decoding="async" style={{width:"100%",height:"100%",objectFit:"cover",opacity:.85}}/>
                     : <div style={{width:"100%",height:"100%",background:`linear-gradient(135deg,${color}30,#0d0d18)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>🎮</div>}
                   <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,#0d0d18,transparent 60%)"}}/>
                   {game.metacritic && <div style={{position:"absolute",top:5,right:5,background:game.metacritic>74?"#16a34a":game.metacritic>59?"#ca8a04":"#dc2626",borderRadius:5,padding:"1px 5px",fontSize:9,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>MC {game.metacritic}</div>}
@@ -1596,7 +1595,7 @@ function GameCard({ game, onClick, locked, darkMode=true }) {
         boxShadow:hov?`0 20px 60px ${color}30`:darkMode?"0 2px 12px rgba(0,0,0,0.4)":"0 2px 12px rgba(0,0,0,0.1)"}}>
       <div style={{position:"relative",height:125,overflow:"hidden",background:"#1a1a2e"}}>
         {game.background_image
-          ? <img src={game.background_image} alt={game.name} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.8,transition:"transform .4s",transform:hov?"scale(1.05)":"scale(1)"}}/>
+          ? <img src={game.background_image} alt={game.name} loading="lazy" decoding="async" style={{width:"100%",height:"100%",objectFit:"cover",opacity:.8,transition:"transform .4s",transform:hov?"scale(1.05)":"scale(1)"}}/>
           : <div style={{width:"100%",height:"100%",background:`linear-gradient(135deg,${color}30,#0d0d18)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:34}}>🎮</div>}
         <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,#0d0d18 0%,transparent 60%)"}}/>
         <div style={{position:"absolute",top:8,left:8,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(8px)",borderRadius:20,padding:"2px 8px",fontSize:9,color,fontFamily:"'Space Mono',monospace",border:`1px solid ${color}40`}}>{catLbl}</div>
@@ -2674,6 +2673,13 @@ export default function App() {
     setLoading(false);
   }, []);
 
+  // Lock body scroll when any modal is open
+  useEffect(() => {
+    const anyModal = viewProfile || showEditProfile || showFAQ || showPrivacy || showTerms;
+    document.body.style.overflow = anyModal ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [viewProfile, showEditProfile, showFAQ, showPrivacy, showTerms]);
+
   // Auto-load a random page of top-rated games on first login
   useEffect(() => {
     if (!user || !access) return;
@@ -2802,47 +2808,33 @@ export default function App() {
 
         {/* Status Bar */}
         <StatusBar user={user} onUpgrade={()=>setShowPaywall(true)} onLogout={handleLogout}/>
-        {/* Profile button in nav */}
-        {user && (
-          <button onClick={()=>setShowEditProfile(true)}
-            style={{position:"fixed",bottom:72,right:20,zIndex:100,
-              width:44,height:44,borderRadius:"50%",
-              background:userProfile?.avatar_color||"#a78bfa",
-              border:"none",cursor:"pointer",fontSize:20,
-              display:"flex",alignItems:"center",justifyContent:"center",
-              boxShadow:`0 4px 20px ${userProfile?.avatar_color||"#a78bfa"}60`}}>
-            {userProfile?.avatar_emoji||"🎮"}
-          </button>
-        )}
-        {/* View my profile button */}
-        {user && (
-          <button onClick={()=>setViewProfile(user.email)} title="View My Profile"
-            style={{position:"fixed",bottom:124,right:20,zIndex:100,
-              background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",
-              borderRadius:"50%",width:44,height:44,cursor:"pointer",fontSize:16,
-              display:"flex",alignItems:"center",justifyContent:"center",
-              color:"rgba(255,255,255,0.7)"}}>
-            👤
-          </button>
-        )}
-        {/* Theme toggle */}
-        <div style={{position:"fixed",bottom:20,right:20,zIndex:100}}>
-          <button onClick={()=>setDarkMode(!darkMode)} title={darkMode?"Switch to Light Mode":"Switch to Dark Mode"}
-            style={{background:darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.1)",
-              border:`1px solid ${darkMode?"rgba(255,255,255,0.2)":"rgba(0,0,0,0.15)"}`,
-              borderRadius:"50%",width:44,height:44,cursor:"pointer",
-              fontSize:20,display:"flex",alignItems:"center",justifyContent:"center",
-              boxShadow:"0 4px 20px rgba(0,0,0,0.3)",transition:"all .2s"}}>
-            {darkMode ? "☀️" : "🌙"}
-          </button>
-        </div>
-
         {/* Header */}
-        <div style={{textAlign:"center",padding:"32px 20px 20px"}}>
+        <div style={{textAlign:"center",padding:"32px 20px 16px"}}>
           <h1 style={{margin:"0 0 6px",fontSize:"clamp(30px,6vw,54px)",fontFamily:"'Bitter',serif",fontWeight:900,color:darkMode?"white":"#0f0f1a",lineHeight:1.05,letterSpacing:-1}}>Worth My Time?</h1>
-          <p style={{color:darkMode?"rgba(255,255,255,0.38)":"#333333",fontSize:13,margin:"0 auto",maxWidth:340,lineHeight:1.7,fontFamily:"'Lora',serif",fontStyle:"italic"}}>
+          <p style={{color:darkMode?"rgba(255,255,255,0.38)":"#333333",fontSize:13,margin:"0 auto 16px",maxWidth:340,lineHeight:1.7,fontFamily:"'Lora',serif",fontStyle:"italic"}}>
             Real game intelligence for busy people.
           </p>
+          {/* User controls row */}
+          {user && (
+            <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap"}}>
+              {[
+                [userProfile?.avatar_emoji||"🎮", "Edit Profile", ()=>setShowEditProfile(true)],
+                ["👤", "My Profile", ()=>setViewProfile(user.email)],
+                [darkMode?"☀️":"🌙", darkMode?"Light Mode":"Dark Mode", ()=>setDarkMode(!darkMode)],
+              ].map(([icon, label, fn])=>(
+                <button key={label} onClick={fn}
+                  style={{background:darkMode?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.06)",
+                    border:`1px solid ${darkMode?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.12)"}`,
+                    borderRadius:20,padding:"5px 14px",color:darkMode?"rgba(255,255,255,0.55)":"rgba(0,0,0,0.55)",
+                    fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace",
+                    display:"flex",alignItems:"center",gap:5,transition:"all .2s"}}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(167,139,250,0.5)";e.currentTarget.style.color="#a78bfa";}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor=darkMode?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.12)";e.currentTarget.style.color=darkMode?"rgba(255,255,255,0.55)":"rgba(0,0,0,0.55)";}}>
+                  <span>{icon}</span>{label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* View Tab Bar */}
