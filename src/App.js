@@ -1224,6 +1224,80 @@ function AuthScreen({ onLogin }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// RECOMMENDATIONS SECTION
+// ─────────────────────────────────────────────────────────────────────────────
+function RecommendationsSection({ user, onGameClick, darkMode }) {
+  const [recs, setRecs] = useState([]);
+  const [basedOn, setBasedOn] = useState([]);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const reviews = await getUserReviews(user.email);
+        const topRated = reviews.filter(r => r.rating >= 4).slice(0, 3);
+        if (!topRated.length) { setReady(true); return; }
+        setBasedOn(topRated.map(r => r.game_name));
+        const reviewedIds = new Set(reviews.map(r => String(r.game_id)));
+        const results = await Promise.all(
+          topRated.map(r =>
+            fetch(`${RAWG_BASE}/games/${r.game_id}/suggested?key=${RAWG_KEY}&page_size=6`)
+              .then(res => res.json()).then(d => d.results || []).catch(() => [])
+          )
+        );
+        const seen = new Set();
+        const filtered = results.flat().filter(g => {
+          if (!g.background_image || reviewedIds.has(String(g.id)) || seen.has(g.id)) return false;
+          seen.add(g.id); return true;
+        });
+        setRecs(filtered.slice(0, 12));
+      } catch {}
+      setReady(true);
+    })();
+  }, [user.email]);
+
+  if (!ready || recs.length === 0) return null;
+
+  return (
+    <div style={{marginBottom:32}}>
+      <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+        <div style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.35)":"#333",fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800}}>✨ RECOMMENDED FOR YOU</div>
+        <div style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.2)":"#888",fontFamily:"'Space Mono',monospace"}}>based on {basedOn.slice(0,2).join(", ")}</div>
+      </div>
+      <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:8,scrollbarWidth:"thin",scrollbarColor:"#2a2a3e transparent"}}>
+        {recs.map(game => {
+          const scores = computeScores(game);
+          const color = accentOf(game.genres);
+          return (
+            <div key={game.id} onClick={()=>onGameClick(game)}
+              style={{flexShrink:0,width:148,cursor:"pointer",borderRadius:14,overflow:"hidden",
+                background:darkMode?"#0d0d18":"#fff",
+                border:`1px solid ${darkMode?"rgba(255,255,255,0.07)":"rgba(0,0,0,0.08)"}`,
+                transition:"transform .2s,box-shadow .2s"}}
+              onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow=`0 12px 30px ${color}35`;}}
+              onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="none";}}>
+              <div style={{height:88,overflow:"hidden",position:"relative",background:"#1a1a2e"}}>
+                <img src={game.background_image} alt={game.name} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.85}}/>
+                <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,#0d0d18,transparent 60%)"}}/>
+                {game.metacritic && <div style={{position:"absolute",top:5,right:5,background:game.metacritic>74?"#16a34a":game.metacritic>59?"#ca8a04":"#dc2626",borderRadius:5,padding:"1px 5px",fontSize:9,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>MC {game.metacritic}</div>}
+              </div>
+              <div style={{padding:"8px 10px"}}>
+                <div style={{fontSize:11,fontWeight:700,color:darkMode?"white":"#0f0f1a",fontFamily:"'Bitter',serif",lineHeight:1.2,marginBottom:6,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden",minHeight:26}}>{game.name}</div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:9,fontFamily:"'Space Mono',monospace"}}>
+                  <span style={{color,fontWeight:700}}>T:{scores.t}</span>
+                  <span style={{color,fontWeight:700}}>A:{scores.a}</span>
+                  <span style={{color,fontWeight:700}}>W:{scores.w}</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TRENDING SECTION
 // ─────────────────────────────────────────────────────────────────────────────
 function TrendingSection({ onGameClick, darkMode }) {
@@ -2659,6 +2733,7 @@ export default function App() {
         <div style={{maxWidth:900,margin:"0 auto",padding:"0 16px"}}>
           {!hasLoaded && !loading && (
             <div>
+              <RecommendationsSection user={user} onGameClick={setSelected} darkMode={darkMode}/>
               <TrendingSection onGameClick={setSelected} darkMode={darkMode}/>
               <div style={{textAlign:"center",padding:"8px 20px 32px"}}>
                 <p style={{color:darkMode?"rgba(255,255,255,0.35)":"rgba(0,0,0,0.45)",fontFamily:"'Space Mono',monospace",fontSize:11,marginBottom:16}}>Or browse the full database of 500,000+ games</p>
