@@ -2781,6 +2781,8 @@ export default function App() {
     } catch { setError("Couldn't load results. Try again."); }
     setLoading(false);
   }, []);
+
+  const fetchGamesWithTime = useCallback(async (timeGenres, ordering="-released") => {
     setLoading(true); setError("");
     try {
       const todayDate = new Date().toISOString().split("T")[0];
