@@ -2818,7 +2818,6 @@ export default function App() {
           {user && (
             <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap"}}>
               {[
-                [userProfile?.avatar_emoji||"🎮", "Edit Profile", ()=>setShowEditProfile(true)],
                 ["👤", "My Profile", ()=>setViewProfile(user.email)],
                 [darkMode?"☀️":"🌙", darkMode?"Light Mode":"Dark Mode", ()=>setDarkMode(!darkMode)],
               ].map(([icon, label, fn])=>(
