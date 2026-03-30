@@ -30,7 +30,7 @@ export default async function handler(req, res) {
         "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
       },
       body: JSON.stringify({
-        from: "Worth My Time <onboarding@resend.dev>",
+        from: "Worth My Time <noreply@worthmytime.info>",
         to: [to_email],
         subject: "Your Worth My Time verification code",
         html: `
