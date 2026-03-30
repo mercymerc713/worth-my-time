@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Build output
+build/
+
+# Environment variables
+.env
+.env.local
+.env.production.local
+.env.development.local
+.env.test.local
+
+# Misc
+.DS_Store
+*.log
+npm-debug.log*
