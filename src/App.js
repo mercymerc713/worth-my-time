@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 // ─────────────────────────────────────────────────────────────────────────────
 const RAWG_KEY = "4d7a97bce7df4cfc94e9981345756746";
 const RAWG_BASE = "https://api.rawg.io/api";
-const TRIAL_DAYS = 7;
+const TRIAL_DAYS = 3;
 const PRICE = "$7.99";
 const STRIPE_PK = "pk_live_51TFTAJ2K899ZvFgqThSdv7JhhI7f8wT4yazZQ13CPdGseAdBUH0jOWST04GCx4PJkJxO9GgwxOpiZLkc0ZedWlpU00PrTvKTMc";
 const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/8x24gsg9K0bT63XcrU9Zm00";
@@ -803,7 +803,7 @@ function PaywallModal({ user, onClose, onSuccess }) {
 
             {status==="expired" && (
               <div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:12,padding:12,marginBottom:18,fontSize:12,color:"#fca5a5",fontFamily:"'Space Mono',monospace",textAlign:"center"}}>
-                Your 7-day trial has ended.
+                Your 3-day trial has ended.
               </div>
             )}
 
@@ -1082,8 +1082,8 @@ function AuthScreen({ onLogin }) {
       <div style={{width:"100%",maxWidth:400}}>
         {/* Trial offer banner */}
         <div style={{background:"rgba(167,139,250,0.12)",border:"1px solid rgba(167,139,250,0.3)",borderRadius:14,padding:"12px 16px",marginBottom:20,textAlign:"center"}}>
-          <div style={{fontSize:13,color:"#a78bfa",fontFamily:"'Space Mono',monospace",fontWeight:700,marginBottom:3}}>🎮 Start your 7-day free trial</div>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace"}}>Full access free for 7 days · Then just {PRICE} one-time</div>
+          <div style={{fontSize:13,color:"#a78bfa",fontFamily:"'Space Mono',monospace",fontWeight:700,marginBottom:3}}>🎮 Start your 3-day free trial</div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace"}}>Full access free for 3 days · Then just {PRICE} one-time</div>
         </div>
 
         <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.09)",borderRadius:20,padding:26}}>
@@ -1114,7 +1114,7 @@ function AuthScreen({ onLogin }) {
                   <Btn onClick={submit} disabled={submitting} variant="purple" style={{width:"100%",marginTop:16,opacity:submitting?0.7:1}}>{submitting?"Sending...":"Send Verification Code →"}</Btn>
                   <div style={{marginTop:12,fontSize:10,color:"rgba(255,255,255,0.25)",fontFamily:"'Space Mono',monospace",textAlign:"center",lineHeight:1.6}}>
                     We'll verify your email before creating your account<br/>
-                    7 days free · No credit card required · {PRICE} one-time after trial
+                    3 days free · No credit card required · {PRICE} one-time after trial
                   </div>
                 </>
               )}
@@ -1327,7 +1327,7 @@ function FAQModal({ onClose, darkMode=true }) {
     ["What are the Time, Adventure, and Worth It scores?",
      "Time (T) measures how session-friendly a game is — 90+ means great 15–30 min sessions, below 50 means you need 2+ hours to feel progress. Adventure (A) rates story depth and world richness. Worth It (W) combines player ratings, Metacritic scores, and review sentiment to tell you if the game deserves your limited hours."],
     ["How is the free trial different from full access?",
-     `Your 7-day free trial gives you complete access to everything — all 500,000+ games, filters, reviews, and profiles. After 7 days you'll need the one-time ${PRICE} payment to continue. No subscriptions, ever.`],
+     `Your 3-day free trial gives you complete access to everything — all 500,000+ games, filters, reviews, and profiles. After 3 days you'll need the one-time ${PRICE} payment to continue. No subscriptions, ever.`],
     [`Is the ${PRICE} really a one-time payment?`,
      "Yes. Pay once, keep access forever. We will never charge you again and there are no hidden fees or tiers."],
     ["Where does the game data come from?",
@@ -1982,7 +1982,7 @@ function LockedOverlay({ onUpgrade }) {
         <div style={{fontSize:48,marginBottom:12}}>🔒</div>
         <h2 style={{color:"white",fontFamily:"'Bitter',serif",margin:"0 0 8px"}}>Trial Ended</h2>
         <p style={{color:"rgba(255,255,255,0.45)",fontFamily:"'Space Mono',monospace",fontSize:12,lineHeight:1.7,marginBottom:24}}>
-          Your 7-day free trial has ended. Unlock full access for a one-time payment of {PRICE} — no subscriptions, ever.
+          Your 3-day free trial has ended. Unlock full access for a one-time payment of {PRICE} — no subscriptions, ever.
         </p>
         <Btn onClick={onUpgrade} variant="gold" style={{padding:"14px 32px",fontSize:14}}>Unlock Full Access — {PRICE}</Btn>
       </div>
@@ -1999,6 +1999,10 @@ function CommunityFeed({ user, darkMode, onViewProfile }) {
   const [followingEmails, setFollowingEmails] = useState([]);
   const [loading, setLoading] = useState(true);
   const [followingInProgress, setFollowingInProgress] = useState({});
+  const [subTab, setSubTab] = useState("feed"); // feed | discover
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
 
   const bg     = darkMode ? "#0d0d18" : "#fff";
   const border = darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.08)";
@@ -2036,6 +2040,28 @@ function CommunityFeed({ user, darkMode, onViewProfile }) {
 
   useEffect(() => { loadFeed(); }, [user.email]);
 
+  const searchPlayers = async (q) => {
+    if (!q.trim()) { setSearchResults([]); return; }
+    setSearching(true);
+    try {
+      // Search by gamer_tag first, then fall back to name match in reviews
+      const [byTag, byReview] = await Promise.all([
+        sbFetch(`/profiles?gamer_tag=ilike.*${encodeURIComponent(q.trim())}*&limit=10`).catch(()=>[]),
+        sbFetch(`/reviews?user_name=ilike.*${encodeURIComponent(q.trim())}*&limit=20`).catch(()=>[]),
+      ]);
+      const seen = new Set([user.email]);
+      const results = [];
+      for (const p of (byTag||[])) {
+        if (!seen.has(p.user_email)) { seen.add(p.user_email); results.push({ email: p.user_email, name: p.gamer_tag || p.user_email?.split("@")[0], gamertag: p.gamer_tag }); }
+      }
+      for (const r of (byReview||[])) {
+        if (!seen.has(r.user_email) && r.user_name !== "Anonymous") { seen.add(r.user_email); results.push({ email: r.user_email, name: r.user_name, gameName: r.game_name }); }
+      }
+      setSearchResults(results.slice(0, 10));
+    } catch { setSearchResults([]); }
+    setSearching(false);
+  };
+
   const handleFollow = async (email) => {
     setFollowingInProgress(p => ({...p, [email]: true}));
     await followUser(user.email, email);
@@ -2055,30 +2081,97 @@ function CommunityFeed({ user, darkMode, onViewProfile }) {
   return (
     <div style={{maxWidth:640,margin:"0 auto",padding:"0 16px 40px"}}>
 
-      {/* Discover People */}
-      {suggested.length > 0 && (
-        <div style={{marginBottom:28}}>
-          <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800,marginBottom:12}}>👥 DISCOVER PLAYERS</div>
-          <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:8,scrollbarWidth:"thin",scrollbarColor:"#2a2a3e transparent"}}>
-            {suggested.map(p => (
-              <div key={p.email} style={{flexShrink:0,width:155,background:bg,border:`1px solid ${border}`,borderRadius:14,padding:"14px 12px",textAlign:"center"}}>
-                <div onClick={()=>onViewProfile(p.email)} style={{cursor:"pointer"}}>
-                  <div style={{width:44,height:44,borderRadius:"50%",background:`hsl(${(p.name?.charCodeAt(0)||0)*7%360},60%,45%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:700,color:"white",margin:"0 auto 8px",fontFamily:"'Space Mono',monospace"}}>
-                    {p.name?.[0]?.toUpperCase()||"?"}
-                  </div>
-                  <div style={{fontSize:12,fontWeight:700,color:text,fontFamily:"'Space Mono',monospace",marginBottom:2}}>{p.name}</div>
-                  <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace",marginBottom:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Playing {p.gameName}</div>
-                </div>
-                <button onClick={()=>handleFollow(p.email)} disabled={!!followingInProgress[p.email]}
-                  style={{width:"100%",background:"linear-gradient(135deg,#a78bfa,#7c3aed)",border:"none",borderRadius:8,padding:"7px",color:"white",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace",opacity:followingInProgress[p.email]?0.7:1}}>
-                  {followingInProgress[p.email]?"...":"+ Follow"}
-                </button>
-              </div>
-            ))}
+      {/* Sub-tab bar */}
+      <div style={{display:"flex",background:darkMode?"rgba(0,0,0,0.35)":"rgba(0,0,0,0.05)",borderRadius:11,padding:3,gap:3,marginBottom:20}}>
+        {[["feed","📋 My Feed"],["discover","🔍 Discover Players"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setSubTab(v)}
+            style={{flex:1,background:subTab===v?darkMode?"rgba(167,139,250,0.2)":"white":"transparent",
+              color:subTab===v?"#a78bfa":darkMode?"rgba(255,255,255,0.4)":"rgba(0,0,0,0.45)",
+              border:`1px solid ${subTab===v?"rgba(167,139,250,0.4)":"transparent"}`,
+              borderRadius:8,padding:"8px",cursor:"pointer",fontSize:11,fontWeight:subTab===v?700:400,
+              fontFamily:"'Space Mono',monospace",transition:"all .2s"}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {/* ── DISCOVER PLAYERS TAB ── */}
+      {subTab === "discover" && (
+        <div>
+          {/* Search box */}
+          <div style={{marginBottom:20}}>
+            <input
+              placeholder="Search by name or gamer tag..."
+              value={searchQuery}
+              onChange={e=>{ setSearchQuery(e.target.value); searchPlayers(e.target.value); }}
+              style={{width:"100%",background:darkMode?"rgba(0,0,0,0.45)":"rgba(0,0,0,0.05)",border:`1px solid ${border}`,borderRadius:11,padding:"12px 16px",color:text,fontSize:12,fontFamily:"'Space Mono',monospace",boxSizing:"border-box"}}/>
           </div>
+
+          {/* Search results */}
+          {searchQuery.trim().length > 0 && (
+            <div style={{marginBottom:24}}>
+              <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800,marginBottom:10}}>SEARCH RESULTS</div>
+              {searching && <div style={{color:muted,fontFamily:"'Space Mono',monospace",fontSize:11}}>Searching...</div>}
+              {!searching && searchResults.length === 0 && <div style={{color:muted,fontFamily:"'Space Mono',monospace",fontSize:11}}>No players found for "{searchQuery}"</div>}
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {searchResults.map(p=>(
+                  <div key={p.email} style={{display:"flex",alignItems:"center",gap:12,background:bg,border:`1px solid ${border}`,borderRadius:12,padding:"12px 14px"}}>
+                    <div onClick={()=>onViewProfile(p.email)} style={{cursor:"pointer",width:40,height:40,borderRadius:"50%",background:`hsl(${(p.name?.charCodeAt(0)||0)*7%360},60%,45%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,color:"white",flexShrink:0,fontFamily:"'Space Mono',monospace"}}>
+                      {p.name?.[0]?.toUpperCase()||"?"}
+                    </div>
+                    <div style={{flex:1}} onClick={()=>onViewProfile(p.email)} >
+                      <div style={{fontSize:13,fontWeight:700,color:text,fontFamily:"'Space Mono',monospace",cursor:"pointer"}}>{p.name}</div>
+                      {p.gamertag && <div style={{fontSize:9,color:"#a78bfa",fontFamily:"'Space Mono',monospace"}}>@{p.gamertag}</div>}
+                      {p.gameName && <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace"}}>Playing {p.gameName}</div>}
+                    </div>
+                    {followingEmails.includes(p.email)
+                      ? <span style={{fontSize:10,color:"#4ade80",fontFamily:"'Space Mono',monospace",fontWeight:700}}>✓ Following</span>
+                      : <button onClick={()=>handleFollow(p.email)} disabled={!!followingInProgress[p.email]}
+                          style={{background:"linear-gradient(135deg,#a78bfa,#7c3aed)",border:"none",borderRadius:8,padding:"7px 14px",color:"white",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace",opacity:followingInProgress[p.email]?0.7:1}}>
+                          {followingInProgress[p.email]?"...":"+ Follow"}
+                        </button>
+                    }
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Suggested players */}
+          {suggested.length > 0 && (
+            <div>
+              <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800,marginBottom:12}}>👥 SUGGESTED PLAYERS</div>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {suggested.map(p=>(
+                  <div key={p.email} style={{display:"flex",alignItems:"center",gap:12,background:bg,border:`1px solid ${border}`,borderRadius:12,padding:"12px 14px"}}>
+                    <div onClick={()=>onViewProfile(p.email)} style={{cursor:"pointer",width:40,height:40,borderRadius:"50%",background:`hsl(${(p.name?.charCodeAt(0)||0)*7%360},60%,45%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,color:"white",flexShrink:0,fontFamily:"'Space Mono',monospace"}}>
+                      {p.name?.[0]?.toUpperCase()||"?"}
+                    </div>
+                    <div style={{flex:1}} onClick={()=>onViewProfile(p.email)}>
+                      <div style={{fontSize:13,fontWeight:700,color:text,fontFamily:"'Space Mono',monospace",cursor:"pointer"}}>{p.name}</div>
+                      {p.gameName && <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace"}}>Playing {p.gameName}</div>}
+                    </div>
+                    <button onClick={()=>handleFollow(p.email)} disabled={!!followingInProgress[p.email]}
+                      style={{background:"linear-gradient(135deg,#a78bfa,#7c3aed)",border:"none",borderRadius:8,padding:"7px 14px",color:"white",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace",opacity:followingInProgress[p.email]?0.7:1}}>
+                      {followingInProgress[p.email]?"...":"+ Follow"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {suggested.length === 0 && !searchQuery && (
+            <div style={{textAlign:"center",padding:"40px 20px",background:bg,border:`1px solid ${border}`,borderRadius:16}}>
+              <div style={{fontSize:36,marginBottom:10}}>🔍</div>
+              <div style={{fontSize:13,fontWeight:700,color:text,fontFamily:"'Bitter',serif",marginBottom:8}}>Search for players</div>
+              <div style={{fontSize:11,color:muted,fontFamily:"'Space Mono',monospace",lineHeight:1.7}}>Type a name or gamer tag above to find and follow other players.</div>
+            </div>
+          )}
         </div>
       )}
 
+      {/* ── FEED TAB ── */}
+      {subTab === "feed" && <>
       {/* Feed header */}
       <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800,marginBottom:12}}>
         📋 YOUR FEED {feedReviews.length>0&&`(${feedReviews.length})`}
@@ -2127,6 +2220,7 @@ function CommunityFeed({ user, darkMode, onViewProfile }) {
           );
         })}
       </div>
+      </>}
     </div>
   );
 }
