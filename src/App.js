@@ -2764,11 +2764,13 @@ export default function App() {
   const handleParentSearch = useCallback(async (type) => {
     setLoading(true); setError(""); setSearch(""); setPage(1); setFilters(DEFAULT_FILTERS); setMinutes("");
     const todayDate = new Date().toISOString().split("T")[0];
+    // esrb: 1=Everyone, 2=Everyone 10+ only — strictly excludes Teen(3), Mature(4), Adults Only(5)
+    const SAFE_ESRB = "1,2";
     const configs = {
-      kids:        { tags:"family-friendly,for-kids,cute",              esrb:"1,2", ordering:"-rating" },
-      adhd:        { tags:"relaxing,casual,wholesome,short",            esrb:"1,2,3", ordering:"-rating" },
-      autism:      { tags:"relaxing,wholesome,colorful,no-jump-scares", esrb:"1,2,3", ordering:"-rating" },
-      familycoop:  { tags:"local-co-op,family-friendly,co-op",          esrb:"1,2", ordering:"-rating" },
+      kids:       { tags:"family-friendly,for-kids,cute,cartoon",          esrb:SAFE_ESRB, ordering:"-rating" },
+      adhd:       { tags:"relaxing,casual,wholesome,colorful,family-friendly", esrb:SAFE_ESRB, ordering:"-rating" },
+      autism:     { tags:"relaxing,wholesome,colorful,no-jump-scares,family-friendly", esrb:SAFE_ESRB, ordering:"-rating" },
+      familycoop: { tags:"local-co-op,family-friendly,co-op,cartoon",      esrb:SAFE_ESRB, ordering:"-rating" },
     };
     const cfg = configs[type]; if (!cfg) return;
     try {
@@ -2776,7 +2778,13 @@ export default function App() {
       const res = await fetch(`${RAWG_BASE}/games?${params}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
-      const results = (data.results||[]).filter(g=>g.background_image);
+      // Extra client-side safety: filter out any game with adult/mature genres
+      const BLOCKED_GENRES = ["adult","eroge","hentai","pinup","nude"];
+      const results = (data.results||[]).filter(g => {
+        if (!g.background_image) return false;
+        const genres = (g.genres||[]).map(g=>g.slug);
+        return !genres.some(s => BLOCKED_GENRES.includes(s));
+      });
       setGames(results); setTotal(data.count||0); setHasLoaded(true);
     } catch { setError("Couldn't load results. Try again."); }
     setLoading(false);
