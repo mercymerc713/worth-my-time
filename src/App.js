@@ -1094,7 +1094,7 @@ function AuthScreen({ onLogin }) {
             ref={el=>{ if(el){ el.style.cssText+="scrollbar-width:none;-ms-overflow-style:none;"; } }}>
             {showcaseGames.map(g=>(
               <div key={g.id} style={{flexShrink:0,width:130,height:78,borderRadius:10,overflow:"hidden",border:"1px solid rgba(255,255,255,0.07)",position:"relative"}}>
-                <img src={g.background_image} alt={g.name} style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.7}}/>
+                <img src={g.background_image} alt={g.name} loading="lazy" decoding="async" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.7}}/>
                 <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,0.7),transparent 50%)"}}/>
                 <div style={{position:"absolute",bottom:5,left:7,right:7,fontSize:8,color:"rgba(255,255,255,0.75)",fontFamily:"'Space Mono',monospace",lineHeight:1.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{g.name}</div>
               </div>
@@ -1303,8 +1303,7 @@ function RecommendationsSection({ user, onGameClick, darkMode }) {
               onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow=`0 12px 30px ${color}35`;}}
               onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="none";}}>
               <div style={{height:88,overflow:"hidden",position:"relative",background:"#1a1a2e"}}>
-                <img src={game.background_image} alt={game.name} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.85}}/>
-                <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,#0d0d18,transparent 60%)"}}/>
+                <img src={game.background_image} alt={game.name} loading="lazy" decoding="async" style={{width:"100%",height:"100%",objectFit:"cover",opacity:.85}}/>
                 {game.metacritic && <div style={{position:"absolute",top:5,right:5,background:game.metacritic>74?"#16a34a":game.metacritic>59?"#ca8a04":"#dc2626",borderRadius:5,padding:"1px 5px",fontSize:9,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>MC {game.metacritic}</div>}
               </div>
               <div style={{padding:"8px 10px"}}>
@@ -1391,7 +1390,7 @@ function TrendingSection({ onGameClick, darkMode }) {
                 onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="none";}}>
                 <div style={{height:88,overflow:"hidden",position:"relative",background:"#1a1a2e"}}>
                   {game.background_image
-                    ? <img src={game.background_image} alt={game.name} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.85}}/>
+                    ? <img src={game.background_image} alt={game.name} loading="lazy" decoding="async" style={{width:"100%",height:"100%",objectFit:"cover",opacity:.85}}/>
                     : <div style={{width:"100%",height:"100%",background:`linear-gradient(135deg,${color}30,#0d0d18)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>🎮</div>}
                   <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,#0d0d18,transparent 60%)"}}/>
                   {game.metacritic && <div style={{position:"absolute",top:5,right:5,background:game.metacritic>74?"#16a34a":game.metacritic>59?"#ca8a04":"#dc2626",borderRadius:5,padding:"1px 5px",fontSize:9,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>MC {game.metacritic}</div>}
@@ -1596,7 +1595,7 @@ function GameCard({ game, onClick, locked, darkMode=true }) {
         boxShadow:hov?`0 20px 60px ${color}30`:darkMode?"0 2px 12px rgba(0,0,0,0.4)":"0 2px 12px rgba(0,0,0,0.1)"}}>
       <div style={{position:"relative",height:125,overflow:"hidden",background:"#1a1a2e"}}>
         {game.background_image
-          ? <img src={game.background_image} alt={game.name} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.8,transition:"transform .4s",transform:hov?"scale(1.05)":"scale(1)"}}/>
+          ? <img src={game.background_image} alt={game.name} loading="lazy" decoding="async" style={{width:"100%",height:"100%",objectFit:"cover",opacity:.8,transition:"transform .4s",transform:hov?"scale(1.05)":"scale(1)"}}/>
           : <div style={{width:"100%",height:"100%",background:`linear-gradient(135deg,${color}30,#0d0d18)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:34}}>🎮</div>}
         <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,#0d0d18 0%,transparent 60%)"}}/>
         <div style={{position:"absolute",top:8,left:8,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(8px)",borderRadius:20,padding:"2px 8px",fontSize:9,color,fontFamily:"'Space Mono',monospace",border:`1px solid ${color}40`}}>{catLbl}</div>

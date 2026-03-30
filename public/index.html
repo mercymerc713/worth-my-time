@@ -17,10 +17,12 @@
     <meta name="twitter:title" content="Worth My Time?" />
     <meta name="twitter:description" content="Game intelligence for busy people. 500,000+ games scored for time, adventure, and value." />
 
-    <!-- Fonts — loaded in <head> to avoid flash of unstyled text -->
+    <!-- Fonts — preconnect first, then load async to unblock render -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Bitter:wght@700;900&family=Space+Mono:wght@400;700&family=Lora:ital@1&display=swap" rel="stylesheet" />
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Bitter:wght@700;900&family=Space+Mono:wght@400;700&family=Lora:ital@1&display=swap" />
+    <link href="https://fonts.googleapis.com/css2?family=Bitter:wght@700;900&family=Space+Mono:wght@400;700&family=Lora:ital@1&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Bitter:wght@700;900&family=Space+Mono:wght@400;700&family=Lora:ital@1&display=swap" rel="stylesheet" /></noscript>
 
     <title>Worth My Time?</title>
   </head>
