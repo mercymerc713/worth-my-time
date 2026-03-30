@@ -10,24 +10,18 @@ export default async function handler(req, res) {
     const results = await searchRes.json();
     if (!Array.isArray(results) || !results.length) return res.status(200).json({});
 
-    // Match the closest name to avoid wrong results
+    // Match exact name first, fall back to first result
     const query = name.toLowerCase();
     const match = results.find(r => r.name?.toLowerCase() === query) || results[0];
 
-    const gameRes = await fetch(
-      `https://api.opencritic.com/api/game/${match.id}`,
-      { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" } }
-    );
-    if (!gameRes.ok) return res.status(gameRes.status).json({});
-    const g = await gameRes.json();
+    // Search results include topCriticScore and percentRecommended — no second call needed
+    const score = match.topCriticScore != null ? Math.round(match.topCriticScore) : -1;
+    const tier = match.tier || null;
+    const percentRecommended = match.percentRecommended != null ? Math.round(match.percentRecommended) : null;
+    const numReviews = match.numReviews || 0;
 
     res.setHeader("Cache-Control", "s-maxage=86400, stale-while-revalidate");
-    return res.status(200).json({
-      score: Math.round(g.topCriticScore ?? -1),
-      tier: g.tier || null,
-      numReviews: g.numReviews || 0,
-      percentRecommended: g.percentRecommended != null ? Math.round(g.percentRecommended) : null,
-    });
+    return res.status(200).json({ score, tier, numReviews, percentRecommended });
   } catch {
     return res.status(500).json({});
   }
