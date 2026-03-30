@@ -2081,15 +2081,21 @@ function GameModal({ game, onClose, currentUser }) {
   const [deckBadge, setDeckBadge] = useState(null);
   const [steamPrice, setSteamPrice] = useState(null);
   const [ocData, setOcData] = useState(null);
+  const [storeDeals, setStoreDeals] = useState([]);
 
   useEffect(() => {
     if (!game) return;
-    setDeckBadge(null); setSteamPrice(null); setOcData(null);
+    setDeckBadge(null); setSteamPrice(null); setOcData(null); setStoreDeals([]);
 
-    // OpenCritic — fetch by name for any game
+    // OpenCritic + ITAD prices — fetch by name for any game
     fetch(`/api/opencritic?name=${encodeURIComponent(game.name)}`)
       .then(r => r.json())
-      .then(d => { if (d?.score != null && d.score >= 0) setOcData(d); })
+      .then(d => { if (d?.score != null && d.score > 0) setOcData(d); })
+      .catch(() => {});
+
+    fetch(`/api/prices?name=${encodeURIComponent(game.name)}`)
+      .then(r => r.json())
+      .then(d => { if (d?.deals?.length) setStoreDeals(d.deals); })
       .catch(() => {});
 
     // Steam + ProtonDB — only for PC/Steam games
@@ -2174,7 +2180,6 @@ function GameModal({ game, onClose, currentUser }) {
 
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
             {[["⏱ Session",scores.hltb.session],["📖 Story",scores.hltb.main],["🏆 100%",scores.hltb.complete],["🎯 Difficulty",scores.difficulty],["⭐ Rating",game.rating?`${game.rating.toFixed(1)}/5`:"Unrated"],["📊 Metacritic",game.metacritic||"No score"],["🔞 Age Rating", scores.esrb==="Not Rated"?"Unrated":scores.esrb==="Everyone"?"E — Everyone":scores.esrb==="Everyone 10+"?"E10+ — Everyone 10+":scores.esrb==="Teen"?"T — Teen (13+)":scores.esrb==="Mature"?"M — Mature (17+)":scores.esrb==="Adults Only"?"AO — Adults Only (18+)":scores.esrb==="Rating Pending"?"Rating Pending":scores.esrb],["📅 Released",game.released?new Date(game.released).toLocaleDateString("en-US",{year:"numeric",month:"short"}):"Unknown"],
-              ...(steamPrice ? [["💰 Steam Price", steamPrice.is_free ? "Free to Play" : steamPrice.discount > 0 ? `${steamPrice.price} (${steamPrice.discount}% off)` : (steamPrice.price || "N/A")]] : []),
             ].map(([k,v])=>(
               <div key={k} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"9px 12px"}}>
                 <div style={{fontSize:9,color:"rgba(255,255,255,0.28)",fontFamily:"'Space Mono',monospace",marginBottom:3}}>{k}</div>
@@ -2182,6 +2187,34 @@ function GameModal({ game, onClose, currentUser }) {
               </div>
             ))}
           </div>
+          {/* Store Prices */}
+          {storeDeals.length > 0 && (
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:9,color:"rgba(255,255,255,0.28)",fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:8}}>💰 PRICES</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {storeDeals.slice(0,6).map((d,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"8px 12px"}}>
+                    <div style={{fontSize:11,color:"rgba(255,255,255,0.7)",fontFamily:"'Space Mono',monospace"}}>{d.store}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      {d.cut > 0 && <span style={{fontSize:9,background:"rgba(74,222,128,0.15)",color:"#4ade80",borderRadius:6,padding:"2px 6px",fontFamily:"'Space Mono',monospace",fontWeight:700}}>-{d.cut}%</span>}
+                      <span style={{fontSize:12,fontWeight:700,color:"white",fontFamily:"'Space Mono',monospace"}}>{d.price}</span>
+                      {d.url && <a href={d.url} target="_blank" rel="noopener noreferrer" style={{fontSize:9,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",textDecoration:"none"}} onMouseEnter={e=>e.currentTarget.style.color="#a78bfa"} onMouseLeave={e=>e.currentTarget.style.color="rgba(255,255,255,0.3)"}>→ Buy</a>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {/* Steam price fallback when ITAD not configured */}
+          {storeDeals.length === 0 && steamPrice && (
+            <div style={{marginBottom:14,background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"9px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{fontSize:9,color:"rgba(255,255,255,0.28)",fontFamily:"'Space Mono',monospace",letterSpacing:1.5}}>💰 STEAM PRICE</div>
+              <div style={{fontSize:12,fontWeight:700,color:"white",fontFamily:"'Space Mono',monospace"}}>
+                {steamPrice.is_free ? "Free to Play" : steamPrice.discount > 0 ? `${steamPrice.price} (${steamPrice.discount}% off)` : steamPrice.price || "N/A"}
+              </div>
+            </div>
+          )}
+
           {(game.platforms||[]).length>0 && (
             <div style={{marginBottom:14}}>
               <div style={{fontSize:9,color:"rgba(255,255,255,0.28)",fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:7}}>AVAILABLE ON</div>
