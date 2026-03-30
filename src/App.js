@@ -2075,29 +2075,43 @@ const DECK_BADGE = {
   pending:  { label:"Pending",  color:"#94a3b8", bg:"rgba(148,163,184,0.1)",  icon:"⏳" },
 };
 
+const OC_TIER_COLOR = { Mighty:"#4ade80", Strong:"#86efac", Fair:"#fbbf24", Weak:"#f87171" };
+
 function GameModal({ game, onClose, currentUser }) {
   const [deckBadge, setDeckBadge] = useState(null);
+  const [steamPrice, setSteamPrice] = useState(null);
+  const [ocData, setOcData] = useState(null);
 
   useEffect(() => {
     if (!game) return;
-    setDeckBadge(null);
+    setDeckBadge(null); setSteamPrice(null); setOcData(null);
+
+    // OpenCritic — fetch by name for any game
+    fetch(`/api/opencritic?name=${encodeURIComponent(game.name)}`)
+      .then(r => r.json())
+      .then(d => { if (d?.score != null && d.score >= 0) setOcData(d); })
+      .catch(() => {});
+
+    // Steam + ProtonDB — only for PC/Steam games
     const isSteam = (game.platforms||[]).some(p => p.platform?.slug === "pc" || p.platform?.name?.toLowerCase().includes("pc"));
     const hasStore = (game.stores||[]).some(s => s.store?.slug === "steam");
     if (!isSteam && !hasStore) return;
 
-    // Fetch store URLs to get Steam App ID
     fetch(`${RAWG_BASE}/games/${game.id}/stores?key=${RAWG_KEY}`)
       .then(r => r.json())
-      .then(data => {
+      .then(async data => {
         const steamUrl = (data.results||[]).find(s => s.url?.includes("steampowered.com"))?.url;
         if (!steamUrl) return;
         const match = steamUrl.match(/\/app\/(\d+)/);
         if (!match) return;
         const appId = match[1];
-        return fetch(`/api/protondb?appId=${appId}`);
+        const [proton, steam] = await Promise.allSettled([
+          fetch(`/api/protondb?appId=${appId}`).then(r => r.json()),
+          fetch(`/api/steam?appId=${appId}`).then(r => r.json()),
+        ]);
+        if (proton.status === "fulfilled" && proton.value?.tier) setDeckBadge(proton.value.tier.toLowerCase());
+        if (steam.status === "fulfilled" && steam.value) setSteamPrice(steam.value);
       })
-      .then(r => r?.json())
-      .then(d => { if (d?.tier) setDeckBadge(d.tier.toLowerCase()); })
       .catch(() => {});
   }, [game?.id]);
 
@@ -2133,7 +2147,7 @@ function GameModal({ game, onClose, currentUser }) {
           </div>
           {/* Steam Deck Badge */}
           {badge && (
-            <div style={{display:"flex",alignItems:"center",gap:10,background:badge.bg,border:`1px solid ${badge.color}40`,borderRadius:12,padding:"10px 14px",marginBottom:14}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,background:badge.bg,border:`1px solid ${badge.color}40`,borderRadius:12,padding:"10px 14px",marginBottom:10}}>
               <span style={{fontSize:20}}>{badge.icon}</span>
               <div>
                 <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace",letterSpacing:1}}>STEAM DECK</div>
@@ -2143,8 +2157,25 @@ function GameModal({ game, onClose, currentUser }) {
             </div>
           )}
 
+          {/* OpenCritic Badge */}
+          {ocData && ocData.score >= 0 && (
+            <div style={{display:"flex",alignItems:"center",gap:10,background:"rgba(74,222,128,0.06)",border:`1px solid ${OC_TIER_COLOR[ocData.tier]||"#4ade80"}30`,borderRadius:12,padding:"10px 14px",marginBottom:10}}>
+              <span style={{fontSize:20}}>🎯</span>
+              <div>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace",letterSpacing:1}}>OPENCRITIC</div>
+                <div style={{fontSize:13,fontWeight:700,color:OC_TIER_COLOR[ocData.tier]||"#4ade80",fontFamily:"'Space Mono',monospace"}}>
+                  {ocData.score} {ocData.tier ? `· ${ocData.tier}` : ""}
+                  {ocData.percentRecommended != null ? <span style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontWeight:400}}> · {ocData.percentRecommended}% recommended</span> : null}
+                </div>
+              </div>
+              <div style={{marginLeft:"auto",fontSize:9,color:"rgba(255,255,255,0.25)",fontFamily:"'Space Mono',monospace",textAlign:"right"}}>via OpenCritic</div>
+            </div>
+          )}
+
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
-            {[["⏱ Session",scores.hltb.session],["📖 Story",scores.hltb.main],["🏆 100%",scores.hltb.complete],["🎯 Difficulty",scores.difficulty],["⭐ Rating",game.rating?`${game.rating.toFixed(1)}/5`:"Unrated"],["📊 Metacritic",game.metacritic||"No score"],["🔞 Age Rating", scores.esrb==="Not Rated"?"Unrated":scores.esrb==="Everyone"?"E — Everyone":scores.esrb==="Everyone 10+"?"E10+ — Everyone 10+":scores.esrb==="Teen"?"T — Teen (13+)":scores.esrb==="Mature"?"M — Mature (17+)":scores.esrb==="Adults Only"?"AO — Adults Only (18+)":scores.esrb==="Rating Pending"?"Rating Pending":scores.esrb],["📅 Released",game.released?new Date(game.released).toLocaleDateString("en-US",{year:"numeric",month:"short"}):"Unknown"]].map(([k,v])=>(
+            {[["⏱ Session",scores.hltb.session],["📖 Story",scores.hltb.main],["🏆 100%",scores.hltb.complete],["🎯 Difficulty",scores.difficulty],["⭐ Rating",game.rating?`${game.rating.toFixed(1)}/5`:"Unrated"],["📊 Metacritic",game.metacritic||"No score"],["🔞 Age Rating", scores.esrb==="Not Rated"?"Unrated":scores.esrb==="Everyone"?"E — Everyone":scores.esrb==="Everyone 10+"?"E10+ — Everyone 10+":scores.esrb==="Teen"?"T — Teen (13+)":scores.esrb==="Mature"?"M — Mature (17+)":scores.esrb==="Adults Only"?"AO — Adults Only (18+)":scores.esrb==="Rating Pending"?"Rating Pending":scores.esrb],["📅 Released",game.released?new Date(game.released).toLocaleDateString("en-US",{year:"numeric",month:"short"}):"Unknown"],
+              ...(steamPrice ? [["💰 Steam Price", steamPrice.is_free ? "Free to Play" : steamPrice.discount > 0 ? `${steamPrice.price} (${steamPrice.discount}% off)` : (steamPrice.price || "N/A")]] : []),
+            ].map(([k,v])=>(
               <div key={k} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"9px 12px"}}>
                 <div style={{fontSize:9,color:"rgba(255,255,255,0.28)",fontFamily:"'Space Mono',monospace",marginBottom:3}}>{k}</div>
                 <div style={{fontSize:12,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{v}</div>
