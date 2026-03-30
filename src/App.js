@@ -1972,7 +1972,42 @@ function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile }) 
   );
 }
 
+const DECK_BADGE = {
+  platinum: { label:"Platinum", color:"#e2e8f0", bg:"rgba(226,232,240,0.15)", icon:"🏅" },
+  gold:     { label:"Gold",     color:"#fbbf24", bg:"rgba(251,191,36,0.15)",  icon:"🥇" },
+  silver:   { label:"Silver",   color:"#94a3b8", bg:"rgba(148,163,184,0.15)", icon:"🥈" },
+  bronze:   { label:"Bronze",   color:"#cd7f32", bg:"rgba(205,127,50,0.15)",  icon:"🥉" },
+  borked:   { label:"Borked",   color:"#f87171", bg:"rgba(248,113,113,0.15)", icon:"💀" },
+  native:   { label:"Native",   color:"#4ade80", bg:"rgba(74,222,128,0.15)",  icon:"🎮" },
+  pending:  { label:"Pending",  color:"#94a3b8", bg:"rgba(148,163,184,0.1)",  icon:"⏳" },
+};
+
 function GameModal({ game, onClose, currentUser }) {
+  const [deckBadge, setDeckBadge] = useState(null);
+
+  useEffect(() => {
+    if (!game) return;
+    setDeckBadge(null);
+    const isSteam = (game.platforms||[]).some(p => p.platform?.slug === "pc" || p.platform?.name?.toLowerCase().includes("pc"));
+    const hasStore = (game.stores||[]).some(s => s.store?.slug === "steam");
+    if (!isSteam && !hasStore) return;
+
+    // Fetch store URLs to get Steam App ID
+    fetch(`${RAWG_BASE}/games/${game.id}/stores?key=${RAWG_KEY}`)
+      .then(r => r.json())
+      .then(data => {
+        const steamUrl = (data.results||[]).find(s => s.url?.includes("steampowered.com"))?.url;
+        if (!steamUrl) return;
+        const match = steamUrl.match(/\/app\/(\d+)/);
+        if (!match) return;
+        const appId = match[1];
+        return fetch(`https://www.protondb.com/api/v1/reports/summaries/${appId}.json`);
+      })
+      .then(r => r?.json())
+      .then(d => { if (d?.tier) setDeckBadge(d.tier.toLowerCase()); })
+      .catch(() => {});
+  }, [game?.id]);
+
   if (!game) return null;
   let scores, color, stores;
   try {
@@ -1984,6 +2019,7 @@ function GameModal({ game, onClose, currentUser }) {
     color  = "#a78bfa";
     stores = [];
   }
+  const badge = deckBadge ? DECK_BADGE[deckBadge] : null;
   return (
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(12px)"}}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#0d0d18",border:`1px solid ${color}50`,borderRadius:24,width:"100%",maxWidth:500,maxHeight:"90vh",overflowY:"auto",boxShadow:`0 0 100px ${color}25`,position:"relative"}}>
@@ -2002,6 +2038,18 @@ function GameModal({ game, onClose, currentUser }) {
             <ScoreRing value={scores.a} label="Adventure" color={color} size={68}/>
             <ScoreRing value={scores.w} label="Worth It"  color={color} size={68}/>
           </div>
+          {/* Steam Deck Badge */}
+          {badge && (
+            <div style={{display:"flex",alignItems:"center",gap:10,background:badge.bg,border:`1px solid ${badge.color}40`,borderRadius:12,padding:"10px 14px",marginBottom:14}}>
+              <span style={{fontSize:20}}>{badge.icon}</span>
+              <div>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace",letterSpacing:1}}>STEAM DECK</div>
+                <div style={{fontSize:13,fontWeight:700,color:badge.color,fontFamily:"'Space Mono',monospace"}}>{badge.label}</div>
+              </div>
+              <div style={{marginLeft:"auto",fontSize:9,color:"rgba(255,255,255,0.25)",fontFamily:"'Space Mono',monospace",textAlign:"right"}}>via ProtonDB</div>
+            </div>
+          )}
+
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
             {[["⏱ Session",scores.hltb.session],["📖 Story",scores.hltb.main],["🏆 100%",scores.hltb.complete],["🎯 Difficulty",scores.difficulty],["⭐ Rating",game.rating?`${game.rating.toFixed(1)}/5`:"Unrated"],["📊 Metacritic",game.metacritic||"No score"],["🔞 Age Rating", scores.esrb==="Not Rated"?"Unrated":scores.esrb==="Everyone"?"E — Everyone":scores.esrb==="Everyone 10+"?"E10+ — Everyone 10+":scores.esrb==="Teen"?"T — Teen (13+)":scores.esrb==="Mature"?"M — Mature (17+)":scores.esrb==="Adults Only"?"AO — Adults Only (18+)":scores.esrb==="Rating Pending"?"Rating Pending":scores.esrb],["📅 Released",game.released?new Date(game.released).toLocaleDateString("en-US",{year:"numeric",month:"short"}):"Unknown"]].map(([k,v])=>(
               <div key={k} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"9px 12px"}}>
@@ -2302,7 +2350,7 @@ function CommunityFeed({ user, darkMode, onViewProfile }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN APP
 // ─────────────────────────────────────────────────────────────────────────────
-const DEFAULT_FILTERS = {time:"all",genre:"all",platform:"all",difficulty:"all",multiplayer:"all",price:"all"};
+const DEFAULT_FILTERS = {time:"all",genre:"all",platform:"all",difficulty:"all",multiplayer:"all",price:"all",year:"all",minScore:"any"};
 const PLATFORM_MAP = {all:"",pc:"4",playstation:"187",xbox:"186",nintendo:"7",mobile:"21,3"};
 const SORT_MAP     = {newest:"-released",rating:"-rating",metacritic:"-metacritic",popular:"-added"};
 
@@ -2403,14 +2451,17 @@ export default function App() {
       }
 
       // ── BROWSE MODE: apply all filters ──────────────────────────────────
+      const YEAR_RANGES = { "2020s":"2020-01-01,"+todayDate, "2010s":"2010-01-01,2019-12-31", "2000s":"2000-01-01,2009-12-31", "classic":"1980-01-01,1999-12-31" };
+      const dateRange = YEAR_RANGES[f.year] || `2000-01-01,${todayDate}`;
       const p = new URLSearchParams({
         key: RAWG_KEY,
         page_size: 20,
         page: pg,
         ordering: SORT_MAP[sort] || "-released",
-        dates: `2000-01-01,${todayDate}`,
+        dates: dateRange,
         exclude_additions: "true",
       });
+      if (f.minScore !== "any") p.set("metacritic", `${f.minScore},100`);
       if (f.platform !== "all" && PLATFORM_MAP[f.platform]) p.set("platforms", PLATFORM_MAP[f.platform]);
       const gs = [];
       if (f.time === "short") gs.push("puzzle,arcade,card-games,fighting,racing,sports");
@@ -2560,6 +2611,21 @@ export default function App() {
     setLoading(false);
   }, []);
 
+  const handleSurpriseMe = async () => {
+    setLoading(true); setError(""); setHasLoaded(true);
+    try {
+      const randomPage = Math.floor(Math.random() * 50) + 1;
+      const todayDate = new Date().toISOString().split("T")[0];
+      const p = new URLSearchParams({ key:RAWG_KEY, page_size:20, page:randomPage, ordering:"-rating", dates:`2010-01-01,${todayDate}`, metacritic:"70,100", exclude_additions:"true" });
+      const res = await fetch(`${RAWG_BASE}/games?${p}`);
+      const data = await res.json();
+      const results = (data.results||[]).filter(g=>g.background_image);
+      if (results.length > 0) setSelected(results[Math.floor(Math.random()*results.length)]);
+      setGames(results);
+    } catch { setError("Couldn't load a surprise. Try again!"); }
+    setLoading(false);
+  };
+
   if (!appReady) return <div style={{minHeight:"100vh",background:"#07070f",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",fontSize:12}}>Loading...</div></div>;
   if (!user) return <><style>{`*{box-sizing:border-box}body{margin:0}input{color-scheme:dark}input::placeholder{color:rgba(255,255,255,0.22)}input:focus{outline:none;border-color:rgba(167,139,250,0.4)!important}`}</style><AuthScreen onLogin={handleLogin}/></>;
 
@@ -2661,6 +2727,9 @@ export default function App() {
             onChange={e=>setSearch(e.target.value)}
             onKeyDown={e=>{ if(e.key==="Enter"){ clearTimeout(debRef.current); setPage(1); fetchGames(e.target.value,filters,sortBy,1); }}}
             style={{padding:"12px 16px",fontSize:12,background:darkMode?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.05)",color:darkMode?"white":"#0f0f1a",border:`1px solid ${darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.15)"}`}}/>
+          <button onClick={handleSurpriseMe} style={{marginTop:10,width:"100%",padding:"11px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#f97316,#ec4899)",color:"white",fontWeight:700,fontSize:13,cursor:"pointer",letterSpacing:"0.5px",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+            🎲 Surprise Me
+          </button>
         </div>
 
         {/* Filter Toggle */}
@@ -2677,6 +2746,8 @@ export default function App() {
                   ["🖥 PLATFORM",[["all","All"],["pc","PC"],["playstation","PS"],["xbox","Xbox"],["nintendo","Nintendo"],["mobile","Mobile"]], "platform", "#a78bfa"],
                   ["🎯 DIFFICULTY",[["all","All"],["easy","Relaxed"],["medium","Medium"],["hard","Challenging"]], "difficulty", "#fbbf24"],
                   ["👥 PLAY STYLE",[["all","All"],["singleplayer","Solo"],["multiplayer","Multi"],["co-op","Co-op"]], "multiplayer", "#34d399"],
+                  ["📅 ERA",[["all","All Time"],["2020s","2020s"],["2010s","2010s"],["2000s","2000s"],["classic","Classic"]], "year", "#f97316"],
+                  ["📊 MIN SCORE",[["any","Any"],["60","Good 60+"],["75","Great 75+"],["85","Outstanding 85+"]], "minScore", "#4ade80"],
                 ].map(([label, opts, key, color])=>(
                   <div key={key}>
                     <div style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.3)":"#111111",fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:6,fontWeight:700}}>{label}</div>
