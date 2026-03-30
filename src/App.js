@@ -2705,8 +2705,9 @@ export default function App() {
 
   useEffect(() => { if (hasLoaded && user && access) fetchGames(search,filters,sortBy,page); }, [page]);
 
-  const handleTimeSearch = () => {
-    const m = parseInt(minutes); if (!m) return;
+  const handleTimeSearch = (overrideMinutes) => {
+    const m = parseInt(overrideMinutes ?? minutes); if (!m) return;
+    setMinutes(String(m));
 
     // Each time window maps to DISTINCT genres so results never overlap
     let timeGenres = "";
@@ -2760,7 +2761,26 @@ export default function App() {
     setError("");
   };
 
-  const fetchGamesWithTime = useCallback(async (timeGenres, ordering="-released") => {
+  const handleParentSearch = useCallback(async (type) => {
+    setLoading(true); setError(""); setSearch(""); setPage(1); setFilters(DEFAULT_FILTERS); setMinutes("");
+    const todayDate = new Date().toISOString().split("T")[0];
+    const configs = {
+      kids:        { tags:"family-friendly,for-kids,cute",              esrb:"1,2", ordering:"-rating" },
+      adhd:        { tags:"relaxing,casual,wholesome,short",            esrb:"1,2,3", ordering:"-rating" },
+      autism:      { tags:"relaxing,wholesome,colorful,no-jump-scares", esrb:"1,2,3", ordering:"-rating" },
+      familycoop:  { tags:"local-co-op,family-friendly,co-op",          esrb:"1,2", ordering:"-rating" },
+    };
+    const cfg = configs[type]; if (!cfg) return;
+    try {
+      const params = new URLSearchParams({ key:RAWG_KEY, page_size:40, page:1, ordering:cfg.ordering, tags:cfg.tags, esrb_ratings:cfg.esrb, dates:`2000-01-01,${todayDate}`, exclude_additions:"true" });
+      const res = await fetch(`${RAWG_BASE}/games?${params}`);
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      const results = (data.results||[]).filter(g=>g.background_image);
+      setGames(results); setTotal(data.count||0); setHasLoaded(true);
+    } catch { setError("Couldn't load results. Try again."); }
+    setLoading(false);
+  }, []);
     setLoading(true); setError("");
     try {
       const todayDate = new Date().toISOString().split("T")[0];
@@ -2865,23 +2885,50 @@ export default function App() {
         )}
 
         {/* Quick Finder */}
-        {activeView === "discover" && <><div style={{maxWidth:540,margin:"0 auto 16px",padding:"0 16px"}}>
+        {activeView === "discover" && <><div style={{maxWidth:540,margin:"0 auto 16px",padding:"0 16px",display:"flex",flexDirection:"column",gap:10}}>
+
+          {/* Time Finder */}
           <div style={{background:darkMode?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.05)",border:`1px solid ${darkMode?"rgba(255,255,255,0.09)":"rgba(0,0,0,0.15)"}`,borderRadius:14,padding:14}}>
-            <div style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.35)":"#111111",fontFamily:"'Space Mono',monospace",letterSpacing:2,marginBottom:8,fontWeight:800}}>⚡ I HAVE THIS MANY MINUTES</div>
-            <div style={{display:"flex",gap:8}}>
-              <Input placeholder="e.g. 45" type="number" value={minutes}
-                onChange={e=>{ const v=e.target.value; setMinutes(v); if(!v) handleClearTimeSearch(); }}
-                onKeyDown={e=>e.key==="Enter"&&handleTimeSearch()}
-                style={{padding:"10px 12px",fontSize:12,background:darkMode?"rgba(0,0,0,0.5)":"rgba(0,0,0,0.05)",color:darkMode?"white":"#0f0f1a",border:`1px solid ${darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.15)"}`}}/>
-              <Btn onClick={handleTimeSearch} variant="primary" style={{whiteSpace:"nowrap",padding:"10px 16px",fontSize:11,borderRadius:9}}>Find →</Btn>
-              {minutes && (
-                <button onClick={handleClearTimeSearch}
-                  style={{background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.4)",borderRadius:9,padding:"10px 13px",color:"#f87171",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",whiteSpace:"nowrap",fontWeight:700}}>
-                  ✕
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.35)":"#111",fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800}}>⚡ I HAVE THIS LONG</div>
+              {minutes && <button onClick={handleClearTimeSearch} style={{background:"none",border:"none",color:"rgba(248,113,113,0.7)",fontSize:9,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>✕ Clear</button>}
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {[["15 min",15],["30 min",30],["45 min",45],["1 hr",60],["1.5 hr",90],["2 hr",120],["3+ hr",180]].map(([label,val])=>(
+                <button key={val} onClick={()=>handleTimeSearch(val)}
+                  style={{background:minutes===String(val)?"rgba(167,139,250,0.25)":darkMode?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.06)",
+                    border:`1px solid ${minutes===String(val)?"rgba(167,139,250,0.6)":darkMode?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.12)"}`,
+                    borderRadius:20,padding:"6px 14px",color:minutes===String(val)?"#a78bfa":darkMode?"rgba(255,255,255,0.6)":"rgba(0,0,0,0.6)",
+                    fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace",fontWeight:minutes===String(val)?700:400,transition:"all .15s"}}>
+                  {label}
                 </button>
-              )}
+              ))}
             </div>
           </div>
+
+          {/* Parents Section */}
+          <div style={{background:darkMode?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.05)",border:`1px solid ${darkMode?"rgba(255,255,255,0.09)":"rgba(0,0,0,0.15)"}`,borderRadius:14,padding:14}}>
+            <div style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.35)":"#111",fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800,marginBottom:10}}>👨‍👩‍👧 FOR PARENTS</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {[
+                ["🧒 Kid Friendly","kids","Games rated Everyone — safe for all ages"],
+                ["🧩 ADHD Friendly","adhd","Short, engaging sessions — easy to pick up and put down"],
+                ["🌈 Autism Safe","autism","Calm, predictable — no jump scares or sensory overload"],
+                ["🎮 Family Co-op","familycoop","Play together on the same couch"],
+              ].map(([label,type,tip])=>(
+                <button key={type} onClick={()=>handleParentSearch(type)} title={tip}
+                  style={{background:darkMode?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.06)",
+                    border:`1px solid ${darkMode?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.12)"}`,
+                    borderRadius:20,padding:"6px 14px",color:darkMode?"rgba(255,255,255,0.6)":"rgba(0,0,0,0.6)",
+                    fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace",transition:"all .15s"}}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(167,139,250,0.5)";e.currentTarget.style.color="#a78bfa";}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor=darkMode?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.12)";e.currentTarget.style.color=darkMode?"rgba(255,255,255,0.6)":"rgba(0,0,0,0.6)";}}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
         </div>
 
         {/* Search */}
