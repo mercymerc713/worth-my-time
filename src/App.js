@@ -2001,7 +2001,7 @@ function GameModal({ game, onClose, currentUser }) {
         const match = steamUrl.match(/\/app\/(\d+)/);
         if (!match) return;
         const appId = match[1];
-        return fetch(`https://www.protondb.com/api/v1/reports/summaries/${appId}.json`);
+        return fetch(`/api/protondb?appId=${appId}`);
       })
       .then(r => r?.json())
       .then(d => { if (d?.tier) setDeckBadge(d.tier.toLowerCase()); })
