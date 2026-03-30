@@ -1991,6 +1991,147 @@ function LockedOverlay({ onUpgrade }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// COMMUNITY FEED
+// ─────────────────────────────────────────────────────────────────────────────
+function CommunityFeed({ user, darkMode, onViewProfile }) {
+  const [feedReviews, setFeedReviews] = useState([]);
+  const [suggested, setSuggested] = useState([]);
+  const [followingEmails, setFollowingEmails] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [followingInProgress, setFollowingInProgress] = useState({});
+
+  const bg     = darkMode ? "#0d0d18" : "#fff";
+  const border = darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.08)";
+  const text   = darkMode ? "white" : "#0f0f1a";
+  const muted  = darkMode ? "rgba(255,255,255,0.35)" : "#666";
+
+  const loadFeed = async () => {
+    setLoading(true);
+    const followingData = await getFollowing(user.email);
+    const emails = followingData.map(f => f.following_email);
+    setFollowingEmails(emails);
+
+    if (emails.length > 0) {
+      try {
+        const reviews = await sbFetch(`/reviews?user_email=in.(${emails.join(",")})&order=created_at.desc&limit=40`);
+        setFeedReviews(reviews || []);
+      } catch { setFeedReviews([]); }
+    }
+
+    try {
+      const recent = await sbFetch(`/reviews?order=created_at.desc&limit=60`);
+      const seen = new Set([user.email, ...emails]);
+      const people = [];
+      for (const r of (recent || [])) {
+        if (!seen.has(r.user_email) && r.user_name !== "Anonymous") {
+          seen.add(r.user_email);
+          people.push({ email: r.user_email, name: r.user_name, gameName: r.game_name });
+        }
+        if (people.length >= 8) break;
+      }
+      setSuggested(people);
+    } catch {}
+    setLoading(false);
+  };
+
+  useEffect(() => { loadFeed(); }, [user.email]);
+
+  const handleFollow = async (email) => {
+    setFollowingInProgress(p => ({...p, [email]: true}));
+    await followUser(user.email, email);
+    setFollowingEmails(e => [...e, email]);
+    setSuggested(s => s.filter(x => x.email !== email));
+    setFollowingInProgress(p => ({...p, [email]: false}));
+    loadFeed();
+  };
+
+  if (loading) return (
+    <div style={{textAlign:"center",padding:"48px 20px"}}>
+      <div style={{display:"inline-flex",gap:6}}>{[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:"#a78bfa",animation:"pulse 1.2s ease infinite",animationDelay:`${i*.2}s`}}/>)}</div>
+      <div style={{color:muted,fontFamily:"'Space Mono',monospace",fontSize:11,marginTop:10}}>Loading your feed...</div>
+    </div>
+  );
+
+  return (
+    <div style={{maxWidth:640,margin:"0 auto",padding:"0 16px 40px"}}>
+
+      {/* Discover People */}
+      {suggested.length > 0 && (
+        <div style={{marginBottom:28}}>
+          <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800,marginBottom:12}}>👥 DISCOVER PLAYERS</div>
+          <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:8,scrollbarWidth:"thin",scrollbarColor:"#2a2a3e transparent"}}>
+            {suggested.map(p => (
+              <div key={p.email} style={{flexShrink:0,width:155,background:bg,border:`1px solid ${border}`,borderRadius:14,padding:"14px 12px",textAlign:"center"}}>
+                <div onClick={()=>onViewProfile(p.email)} style={{cursor:"pointer"}}>
+                  <div style={{width:44,height:44,borderRadius:"50%",background:`hsl(${(p.name?.charCodeAt(0)||0)*7%360},60%,45%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:700,color:"white",margin:"0 auto 8px",fontFamily:"'Space Mono',monospace"}}>
+                    {p.name?.[0]?.toUpperCase()||"?"}
+                  </div>
+                  <div style={{fontSize:12,fontWeight:700,color:text,fontFamily:"'Space Mono',monospace",marginBottom:2}}>{p.name}</div>
+                  <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace",marginBottom:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Playing {p.gameName}</div>
+                </div>
+                <button onClick={()=>handleFollow(p.email)} disabled={!!followingInProgress[p.email]}
+                  style={{width:"100%",background:"linear-gradient(135deg,#a78bfa,#7c3aed)",border:"none",borderRadius:8,padding:"7px",color:"white",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace",opacity:followingInProgress[p.email]?0.7:1}}>
+                  {followingInProgress[p.email]?"...":"+ Follow"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Feed header */}
+      <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800,marginBottom:12}}>
+        📋 YOUR FEED {feedReviews.length>0&&`(${feedReviews.length})`}
+      </div>
+
+      {/* Empty states */}
+      {followingEmails.length === 0 && (
+        <div style={{textAlign:"center",padding:"40px 20px",background:bg,border:`1px solid ${border}`,borderRadius:16}}>
+          <div style={{fontSize:36,marginBottom:10}}>👥</div>
+          <div style={{fontSize:14,fontWeight:700,color:text,fontFamily:"'Bitter',serif",marginBottom:8}}>Your feed is empty</div>
+          <div style={{fontSize:11,color:muted,fontFamily:"'Space Mono',monospace",lineHeight:1.7}}>Follow other players to see their reviews here. Check out the players above to get started!</div>
+        </div>
+      )}
+      {followingEmails.length > 0 && feedReviews.length === 0 && (
+        <div style={{textAlign:"center",padding:"40px 20px",background:bg,border:`1px solid ${border}`,borderRadius:16}}>
+          <div style={{fontSize:36,marginBottom:10}}>🎮</div>
+          <div style={{fontSize:14,fontWeight:700,color:text,fontFamily:"'Bitter',serif",marginBottom:8}}>No reviews yet</div>
+          <div style={{fontSize:11,color:muted,fontFamily:"'Space Mono',monospace",lineHeight:1.7}}>The people you follow haven't posted any reviews yet. Check back soon!</div>
+        </div>
+      )}
+
+      {/* Feed items */}
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        {feedReviews.map((r,i) => {
+          const isAnon = r.user_name === "Anonymous";
+          const avatarBg = isAnon ? "rgba(255,255,255,0.15)" : `hsl(${(r.user_name?.charCodeAt(0)||0)*7%360},60%,45%)`;
+          return (
+            <div key={`${r.user_email}-${r.game_id}-${i}`} style={{background:bg,border:`1px solid ${border}`,borderRadius:16,padding:16}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                <div onClick={()=>!isAnon&&onViewProfile(r.user_email)}
+                  style={{cursor:isAnon?"default":"pointer",width:36,height:36,borderRadius:"50%",background:avatarBg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:isAnon?16:13,fontWeight:700,color:"white",flexShrink:0,fontFamily:"'Space Mono',monospace"}}>
+                  {isAnon?"👤":r.user_name?.[0]?.toUpperCase()||"?"}
+                </div>
+                <div style={{flex:1}}>
+                  <div onClick={()=>!isAnon&&onViewProfile(r.user_email)} style={{cursor:isAnon?"default":"pointer",fontSize:12,fontWeight:700,color:text,fontFamily:"'Space Mono',monospace"}}>{r.user_name}</div>
+                  <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace"}}>{new Date(r.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
+                </div>
+                <div style={{display:"flex",gap:1}}>{[1,2,3,4,5].map(s=><span key={s} style={{fontSize:12,color:s<=r.rating?"#fbbf24":"rgba(255,255,255,0.12)"}}>★</span>)}</div>
+              </div>
+              <div style={{background:darkMode?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.04)",borderRadius:10,padding:"10px 12px",marginBottom:r.review_text?10:0}}>
+                <div style={{fontSize:13,fontWeight:700,color:text,fontFamily:"'Bitter',serif"}}>{r.game_name}</div>
+                {r.time_spent && <div style={{fontSize:10,color:muted,fontFamily:"'Space Mono',monospace",marginTop:3}}>⏱ {r.time_spent}</div>}
+              </div>
+              {r.review_text && <div style={{fontSize:12,color:darkMode?"rgba(255,255,255,0.65)":"#444",fontFamily:"'Space Mono',monospace",lineHeight:1.7}}>{r.review_text}</div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN APP
 // ─────────────────────────────────────────────────────────────────────────────
 const DEFAULT_FILTERS = {time:"all",genre:"all",platform:"all",difficulty:"all",multiplayer:"all",price:"all"};
@@ -2018,6 +2159,7 @@ export default function App() {
   const [viewProfile, setViewProfile] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [showFAQ, setShowFAQ] = useState(false);
+  const [activeView, setActiveView] = useState("discover"); // discover | community
   const debRef = useRef(null);
 
   // Load user from storage — refresh from Supabase to get latest trial/paid status
@@ -2304,8 +2446,29 @@ export default function App() {
           </p>
         </div>
 
+        {/* View Tab Bar */}
+        <div style={{maxWidth:540,margin:"0 auto 20px",padding:"0 16px"}}>
+          <div style={{display:"flex",background:darkMode?"rgba(0,0,0,0.4)":"rgba(0,0,0,0.06)",borderRadius:12,padding:3,gap:3}}>
+            {[["discover","🎮 Discover"],["community","👥 Community"]].map(([v,l])=>(
+              <button key={v} onClick={()=>setActiveView(v)}
+                style={{flex:1,background:activeView===v?darkMode?"rgba(167,139,250,0.2)":"white":"transparent",
+                  color:activeView===v?"#a78bfa":darkMode?"rgba(255,255,255,0.4)":"rgba(0,0,0,0.45)",
+                  border:`1px solid ${activeView===v?"rgba(167,139,250,0.4)":"transparent"}`,
+                  borderRadius:9,padding:"9px",cursor:"pointer",fontSize:12,fontWeight:activeView===v?700:400,
+                  fontFamily:"'Space Mono',monospace",transition:"all .2s"}}>
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Community Feed View */}
+        {activeView === "community" && (
+          <CommunityFeed user={user} darkMode={darkMode} onViewProfile={setViewProfile}/>
+        )}
+
         {/* Quick Finder */}
-        <div style={{maxWidth:540,margin:"0 auto 16px",padding:"0 16px"}}>
+        {activeView === "discover" && <><div style={{maxWidth:540,margin:"0 auto 16px",padding:"0 16px"}}>
           <div style={{background:darkMode?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.05)",border:`1px solid ${darkMode?"rgba(255,255,255,0.09)":"rgba(0,0,0,0.15)"}`,borderRadius:14,padding:14}}>
             <div style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.35)":"#111111",fontFamily:"'Space Mono',monospace",letterSpacing:2,marginBottom:8,fontWeight:800}}>⚡ I HAVE THIS MANY MINUTES</div>
             <div style={{display:"flex",gap:8}}>
@@ -2442,9 +2605,9 @@ export default function App() {
               <Btn onClick={()=>setPage(p=>p+1)} variant="ghost" style={{padding:"7px 13px",fontSize:11,borderRadius:8}}>Next →</Btn>
             </div>
           )}
-        </div>
+        </div></>}
 
-        <div style={{textAlign:"center",paddingBottom:26,display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
+        {activeView === "discover" && <div style={{textAlign:"center",paddingBottom:26,display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
           <button onClick={()=>setShowFAQ(true)}
             style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",borderRadius:20,padding:"6px 16px",color:darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.35)",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace",transition:"all .2s"}}
             onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(167,139,250,0.4)";e.currentTarget.style.color="#a78bfa";}}
@@ -2454,7 +2617,7 @@ export default function App() {
           <div style={{color:darkMode?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.25)",fontSize:9,letterSpacing:2,fontFamily:"'Space Mono',monospace"}}>
             WORTH MY TIME · RAWG.IO · HLTB · YOUR SCORES
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* Modals */}
