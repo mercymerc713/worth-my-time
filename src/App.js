@@ -2610,15 +2610,21 @@ export default function App() {
     setLoading(false);
   }, []);
 
+  // Auto-load a random page of top-rated games on first login
   useEffect(() => {
     if (!user || !access) return;
-    if (!hasLoaded && !search && search !== "") return;
+    const randomPage = Math.floor(Math.random() * 20) + 1;
+    fetchGames("", filters, "rating", randomPage);
+  }, [user?.email, access]);
+
+  useEffect(() => {
+    if (!user || !access || !hasLoaded) return;
     clearTimeout(debRef.current);
     debRef.current = setTimeout(() => {
       setPage(1);
       fetchGames(search, filters, sortBy, 1);
-    }, search ? 400 : 100); // faster reload when clearing search
-  }, [search, filters, sortBy, user]);
+    }, search ? 400 : 100);
+  }, [search, filters, sortBy]);
 
   useEffect(() => { if (hasLoaded && user && access) fetchGames(search,filters,sortBy,page); }, [page]);
 
