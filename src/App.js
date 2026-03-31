@@ -1868,6 +1868,78 @@ function computeAchievements(profile, reviews, followers, following=[]) {
 const AVATAR_EMOJIS = ["🎮","👾","🕹️","⚔️","🏆","🎯","🔥","💎","🌟","🦁","🐉","🤖","👑","🎭","🚀","⚡"];
 const AVATAR_COLORS = ["#a78bfa","#f87171","#34d399","#60a5fa","#fbbf24","#f97316","#e879f9","#38bdf8"];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// KIDS MODE SETTINGS (rendered inside EditProfileModal Controls tab)
+// ─────────────────────────────────────────────────────────────────────────────
+const KIDS_MODE_KEY = "wmt_kids_mode";
+
+function KidsModeSettings() {
+  const [kidsMode, setKidsMode] = useState(() => localStorage.getItem(KIDS_MODE_KEY) === "1");
+  const [showPin, setShowPin] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null); // "enable"|"disable"
+
+  const toggle = () => {
+    setPendingAction(kidsMode ? "disable" : "enable");
+    setShowPin(true);
+  };
+
+  return (
+    <div>
+      <div style={{fontSize:9,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800,marginBottom:14}}>PARENTAL CONTROLS</div>
+
+      {/* Kids Mode toggle row */}
+      <div style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${kidsMode?"rgba(167,139,250,0.4)":"rgba(255,255,255,0.08)"}`,borderRadius:14,padding:16,cursor:"pointer",transition:"all .2s"}} onClick={toggle}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontSize:13,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace",marginBottom:4}}>
+              {kidsMode ? "🧒 Kids Mode ON" : "🔒 Kids Mode OFF"}
+            </div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace",lineHeight:1.6}}>
+              {kidsMode
+                ? "Account locked to Everyone-rated games only. PIN required to disable."
+                : "Enable to restrict this account to kid-friendly games only."}
+            </div>
+          </div>
+          <div style={{width:42,height:24,borderRadius:12,background:kidsMode?"#a78bfa":"rgba(255,255,255,0.1)",position:"relative",transition:"background .2s",flexShrink:0,marginLeft:12}}>
+            <div style={{position:"absolute",top:3,left:kidsMode?21:3,width:18,height:18,borderRadius:"50%",background:"white",transition:"left .2s",boxShadow:"0 1px 4px rgba(0,0,0,0.4)"}}/>
+          </div>
+        </div>
+      </div>
+
+      {kidsMode && (
+        <div style={{marginTop:12,background:"rgba(167,139,250,0.08)",border:"1px solid rgba(167,139,250,0.2)",borderRadius:12,padding:12}}>
+          <div style={{fontSize:10,color:"rgba(167,139,250,0.9)",fontFamily:"'Space Mono',monospace",lineHeight:1.7}}>
+            ✓ All browsing restricted to ESRB Everyone / Everyone 10+<br/>
+            ✓ Adult content toggle hidden<br/>
+            ✓ Strict filtering on every search and page<br/>
+            ✓ PIN required to disable
+          </div>
+        </div>
+      )}
+
+      <div style={{fontSize:9,color:"rgba(255,255,255,0.2)",fontFamily:"'Space Mono',monospace",marginTop:12,lineHeight:1.6}}>
+        The PIN is stored on this device only. If you forget it, clear your browser data to reset.
+      </div>
+
+      {showPin && <ParentalPinModal darkMode={true}
+        mode={localStorage.getItem(PARENT_PIN_KEY) ? "verify" : "set"}
+        onCancel={()=>{ setShowPin(false); setPendingAction(null); }}
+        onSuccess={()=>{
+          if (pendingAction === "enable") {
+            localStorage.setItem(KIDS_MODE_KEY, "1");
+            setKidsMode(true);
+            window.dispatchEvent(new Event("wmt_kids_mode_change"));
+          } else {
+            localStorage.removeItem(KIDS_MODE_KEY);
+            setKidsMode(false);
+            window.dispatchEvent(new Event("wmt_kids_mode_change"));
+          }
+          setShowPin(false); setPendingAction(null);
+        }}/>}
+    </div>
+  );
+}
+
 function EditProfileModal({ user, onClose, onSave }) {
   const [gamerTag, setGamerTag] = useState("");
   const [bio, setBio] = useState("");
@@ -1880,7 +1952,7 @@ function EditProfileModal({ user, onClose, onSave }) {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [err, setErr] = useState("");
-  const [tab, setTab] = useState("identity"); // identity | appearance | status
+  const [tab, setTab] = useState("identity"); // identity | appearance | status | controls
 
   useEffect(() => {
     getProfile(user.email).then(p => {
@@ -1976,7 +2048,7 @@ function EditProfileModal({ user, onClose, onSave }) {
 
           {/* Tabs */}
           <div style={{display:"flex",background:"rgba(0,0,0,0.4)",borderRadius:10,padding:3,marginBottom:20,gap:3}}>
-            {[["identity","👤 Identity"],["appearance","🎨 Look"],["status","🎮 Status"]].map(([id,lbl])=>(
+            {[["identity","👤 Identity"],["appearance","🎨 Look"],["status","🎮 Status"],["controls","🔒 Controls"]].map(([id,lbl])=>(
               <button key={id} onClick={()=>setTab(id)}
                 style={{flex:1,background:tab===id?"rgba(167,139,250,0.2)":"transparent",color:tab===id?"#a78bfa":"rgba(255,255,255,0.4)",border:`1px solid ${tab===id?"rgba(167,139,250,0.4)":"transparent"}`,borderRadius:8,padding:"8px 4px",cursor:"pointer",fontSize:10,fontFamily:"'Space Mono',monospace",fontWeight:tab===id?700:400}}>
                 {lbl}
@@ -2028,13 +2100,17 @@ function EditProfileModal({ user, onClose, onSave }) {
             </div>
           )}
 
-          {err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:10}}>⚠ {err}</div>}
+          {tab==="controls" && (
+            <KidsModeSettings/>
+          )}
+
+          {tab !== "controls" && err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:10}}>⚠ {err}</div>}
 
           <div style={{display:"flex",gap:8,marginTop:20}}>
-            <button onClick={handleSave} disabled={saving}
+            {tab !== "controls" && <button onClick={handleSave} disabled={saving}
               style={{flex:1,background:"linear-gradient(135deg,#a78bfa,#7c3aed)",border:"none",borderRadius:11,padding:"13px",color:"white",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"'Space Mono',monospace",opacity:saving?0.7:1}}>
               {saving?"Saving...":"Save Profile →"}
-            </button>
+            </button>}
             <button onClick={onClose}
               style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:11,padding:"13px 16px",color:"rgba(255,255,255,0.5)",fontSize:12,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
               Cancel
@@ -2725,10 +2801,26 @@ export default function App() {
   const [activeParentFilter, setActiveParentFilter] = useState(null);
   const [parentalModeActive, setParentalModeActive] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
-  const [pendingPinAction, setPendingPinAction] = useState(null); // "enter_mode"|"exit_mode"
+  const [pendingPinAction, setPendingPinAction] = useState(null);
+  const [kidsMode, setKidsMode] = useState(() => localStorage.getItem(KIDS_MODE_KEY) === "1");
   const parentPinSet = () => !!localStorage.getItem(PARENT_PIN_KEY);
   const ageVerifiedRef = useRef(ageVerified);
+  const kidsModeRef = useRef(kidsMode);
   useEffect(() => { ageVerifiedRef.current = ageVerified; }, [ageVerified]);
+  useEffect(() => { kidsModeRef.current = kidsMode; }, [kidsMode]);
+  // Listen for kids mode changes from the settings component
+  useEffect(() => {
+    const handler = () => {
+      const on = localStorage.getItem(KIDS_MODE_KEY) === "1";
+      setKidsMode(on);
+      kidsModeRef.current = on;
+      setActiveParentFilter(null);
+      setParentalModeActive(false);
+      setTimeout(() => fetchGames(search, filters, sortBy, 1), 50);
+    };
+    window.addEventListener("wmt_kids_mode_change", handler);
+    return () => window.removeEventListener("wmt_kids_mode_change", handler);
+  }, []);
   const debRef = useRef(null);
 
   // Load user from storage — refresh from Supabase to get latest trial/paid status
@@ -2816,8 +2908,9 @@ export default function App() {
       });
       if (f.minScore !== "any") p.set("metacritic", `${f.minScore},100`);
       if (f.platform !== "all" && PLATFORM_MAP[f.platform]) p.set("platforms", PLATFORM_MAP[f.platform]);
-      // Exclude Adults Only (5) by default; only include when age verified
-      if (!ageVerifiedRef.current) p.set("esrb_ratings", "1,2,3,4");
+      // Kids Mode locks to Everyone/Everyone 10+ only; otherwise exclude Adults Only unless age verified
+      if (kidsModeRef.current) p.set("esrb_ratings", "1,2");
+      else if (!ageVerifiedRef.current) p.set("esrb_ratings", "1,2,3,4");
       const gs = [];
       if (f.time === "short") gs.push("puzzle,arcade,card-games,fighting,racing,sports");
       if (f.time === "long")  gs.push("role-playing-games-rpg,strategy,simulation");
@@ -2833,9 +2926,14 @@ export default function App() {
       const today = new Date().toISOString().split("T")[0];
 
       // Filter out unreleased games and games with no cover image
+      // In Kids Mode: also enforce ESRB 1-2 client-side (API filter alone is unreliable)
       results = results.filter(g => {
         if (!g.released || g.released > today) return false;
         if (!g.background_image) return false;
+        if (kidsModeRef.current) {
+          const esrbId = g.esrb_rating?.id;
+          if (!esrbId || esrbId > 2) return false;
+        }
         return true;
       });
 
@@ -3065,6 +3163,11 @@ export default function App() {
           {/* User controls row */}
           {user && (
             <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap"}}>
+              {kidsMode && (
+                <div style={{background:"rgba(167,139,250,0.15)",border:"1px solid rgba(167,139,250,0.4)",borderRadius:20,padding:"5px 14px",color:"#a78bfa",fontSize:10,fontFamily:"'Space Mono',monospace",fontWeight:700,display:"flex",alignItems:"center",gap:5}}>
+                  🧒 Kids Mode
+                </div>
+              )}
               {[
                 ["👤", "My Profile", ()=>setViewProfile(user.email)],
                 [darkMode?"☀️":"🌙", darkMode?"Light Mode":"Dark Mode", ()=>setDarkMode(!darkMode)],
@@ -3127,83 +3230,52 @@ export default function App() {
             </div>
           </div>
 
-          {/* 18+ Toggle */}
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:darkMode?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.05)",border:`1px solid ${ageVerified?"rgba(249,115,22,0.4)":darkMode?"rgba(255,255,255,0.09)":"rgba(0,0,0,0.15)"}`,borderRadius:14,padding:"10px 14px",cursor:"pointer",transition:"all .2s"}}
-            onClick={()=>{ if(ageVerified){ localStorage.removeItem("wmt_age_verified"); setAgeVerified(false); setTimeout(()=>fetchGames(search,filters,sortBy,1),50); } else { setShowAgeGate(true); } }}>
-            <div>
-              <div style={{fontSize:9,color:ageVerified?"#f97316":darkMode?"rgba(255,255,255,0.35)":"#111",fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800}}>🔞 MATURE CONTENT</div>
-              <div style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.4)",fontFamily:"'Space Mono',monospace",marginTop:3}}>{ageVerified ? "Showing Mature & Adults Only games" : "18+ content hidden — tap to enable"}</div>
+          {/* 18+ Toggle — hidden when Kids Mode is on */}
+          {!kidsMode && (
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:darkMode?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.05)",border:`1px solid ${ageVerified?"rgba(249,115,22,0.4)":darkMode?"rgba(255,255,255,0.09)":"rgba(0,0,0,0.15)"}`,borderRadius:14,padding:"10px 14px",cursor:"pointer",transition:"all .2s"}}
+              onClick={()=>{ if(ageVerified){ localStorage.removeItem("wmt_age_verified"); setAgeVerified(false); setTimeout(()=>fetchGames(search,filters,sortBy,1),50); } else { setShowAgeGate(true); } }}>
+              <div>
+                <div style={{fontSize:9,color:ageVerified?"#f97316":darkMode?"rgba(255,255,255,0.35)":"#111",fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800}}>🔞 MATURE CONTENT</div>
+                <div style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.4)",fontFamily:"'Space Mono',monospace",marginTop:3}}>{ageVerified ? "Showing Mature & Adults Only games" : "18+ content hidden — tap to enable"}</div>
+              </div>
+              <div style={{width:36,height:20,borderRadius:10,background:ageVerified?"#f97316":"rgba(255,255,255,0.1)",position:"relative",transition:"background .2s",flexShrink:0}}>
+                <div style={{position:"absolute",top:2,left:ageVerified?18:2,width:16,height:16,borderRadius:"50%",background:"white",transition:"left .2s",boxShadow:"0 1px 4px rgba(0,0,0,0.4)"}}/>
+              </div>
             </div>
-            <div style={{width:36,height:20,borderRadius:10,background:ageVerified?"#f97316":"rgba(255,255,255,0.1)",position:"relative",transition:"background .2s",flexShrink:0}}>
-              <div style={{position:"absolute",top:2,left:ageVerified?18:2,width:16,height:16,borderRadius:"50%",background:"white",transition:"left .2s",boxShadow:"0 1px 4px rgba(0,0,0,0.4)"}}/>
-            </div>
-          </div>
+          )}
 
-          {/* Parents Section */}
-          <div style={{background:parentalModeActive?"rgba(167,139,250,0.07)":darkMode?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.05)",border:`1px solid ${parentalModeActive?"rgba(167,139,250,0.35)":darkMode?"rgba(255,255,255,0.09)":"rgba(0,0,0,0.15)"}`,borderRadius:14,padding:14,transition:"all .2s"}}>
-            {/* Header row */}
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-              <div style={{fontSize:9,color:parentalModeActive?"#a78bfa":darkMode?"rgba(255,255,255,0.35)":"#111",fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800}}>
-                👨‍👩‍👧 FOR PARENTS
+          {/* Kids Mode active — show sub-filters + banner */}
+          {kidsMode && (
+            <div style={{background:"rgba(167,139,250,0.08)",border:"1px solid rgba(167,139,250,0.3)",borderRadius:14,padding:14}}>
+              <div style={{fontSize:9,color:"#a78bfa",fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800,marginBottom:10}}>🧒 KIDS MODE ACTIVE</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {[
+                  ["🧒 Kid Friendly","kids","Games rated Everyone — safe for all ages"],
+                  ["🧩 ADHD Friendly","adhd","Short, engaging sessions — easy to pick up and put down"],
+                  ["🌈 Autism Safe","autism","Calm, predictable — no jump scares or sensory overload"],
+                  ["🎮 Family Co-op","familycoop","Play together on the same couch"],
+                ].map(([label,type,tip])=>{
+                  const isActive = activeParentFilter === type;
+                  return (
+                    <button key={type} title={tip}
+                      onClick={()=>{
+                        if (isActive) { setActiveParentFilter(null); setPage(1); fetchGames(search,filters,sortBy,1); }
+                        else { handleParentSearch(type); }
+                      }}
+                      style={{background:isActive?"rgba(167,139,250,0.25)":"rgba(167,139,250,0.06)",
+                        border:`1px solid ${isActive?"rgba(167,139,250,0.7)":"rgba(167,139,250,0.2)"}`,
+                        borderRadius:20,padding:"6px 14px",color:isActive?"#a78bfa":"rgba(167,139,250,0.7)",
+                        fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace",fontWeight:isActive?700:400,transition:"all .15s"}}>
+                      {isActive ? `✓ ${label}` : label}
+                    </button>
+                  );
+                })}
               </div>
-              {parentalModeActive ? (
-                <button onClick={()=>{ setPendingPinAction("exit_mode"); setShowPinModal(true); }}
-                  title="Lock parental mode"
-                  style={{display:"flex",alignItems:"center",gap:5,background:"rgba(167,139,250,0.15)",border:"1px solid rgba(167,139,250,0.4)",borderRadius:20,padding:"3px 10px",color:"#a78bfa",fontSize:9,cursor:"pointer",fontFamily:"'Space Mono',monospace",fontWeight:700}}>
-                  🔓 UNLOCKED · LOCK
-                </button>
-              ) : (
-                <button onClick={()=>{ setPendingPinAction("enter_mode"); setShowPinModal(true); }}
-                  title="Unlock parental mode"
-                  style={{display:"flex",alignItems:"center",gap:5,background:"rgba(255,255,255,0.04)",border:`1px solid ${darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.12)"}`,borderRadius:20,padding:"3px 10px",color:darkMode?"rgba(255,255,255,0.35)":"rgba(0,0,0,0.4)",fontSize:9,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
-                  🔒 LOCKED
-                </button>
-              )}
-            </div>
-            {/* Filter buttons — free switching when mode is active, PIN gate when not */}
-            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-              {[
-                ["🧒 Kid Friendly","kids","Games rated Everyone — safe for all ages"],
-                ["🧩 ADHD Friendly","adhd","Short, engaging sessions — easy to pick up and put down"],
-                ["🌈 Autism Safe","autism","Calm, predictable — no jump scares or sensory overload"],
-                ["🎮 Family Co-op","familycoop","Play together on the same couch"],
-              ].map(([label,type,tip])=>{
-                const isActive = activeParentFilter === type;
-                return (
-                  <button key={type} title={parentalModeActive ? tip : "Unlock parental mode to use filters"}
-                    onClick={()=>{
-                      if (!parentalModeActive) {
-                        // Must enter mode first
-                        setPendingPinAction("enter_mode");
-                        setShowPinModal(true);
-                        return;
-                      }
-                      // In mode: toggle freely
-                      if (isActive) {
-                        setActiveParentFilter(null);
-                        setPage(1);
-                        fetchGames(search, filters, sortBy, 1);
-                      } else {
-                        handleParentSearch(type);
-                      }
-                    }}
-                    style={{background:isActive?"rgba(167,139,250,0.18)":darkMode?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.06)",
-                      border:`1px solid ${isActive?"rgba(167,139,250,0.6)":darkMode?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.12)"}`,
-                      borderRadius:20,padding:"6px 14px",
-                      color:isActive?"#a78bfa":parentalModeActive?darkMode?"rgba(255,255,255,0.7)":"rgba(0,0,0,0.7)":darkMode?"rgba(255,255,255,0.35)":"rgba(0,0,0,0.35)",
-                      fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace",
-                      fontWeight:isActive?700:400,opacity:parentalModeActive?1:0.6,transition:"all .15s"}}>
-                    {isActive ? `✓ ${label}` : label}
-                  </button>
-                );
-              })}
-            </div>
-            {!parentalModeActive && (
-              <div style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.2)":"rgba(0,0,0,0.3)",fontFamily:"'Space Mono',monospace",marginTop:8}}>
-                🔒 Tap LOCKED to enter your parental PIN and unlock filters
+              <div style={{fontSize:9,color:"rgba(167,139,250,0.5)",fontFamily:"'Space Mono',monospace",marginTop:10}}>
+                All browsing is restricted to Everyone-rated games. Manage in Profile → Controls.
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
         </div>
 
