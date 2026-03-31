@@ -779,12 +779,36 @@ function PaywallModal({ user, onClose, onSuccess }) {
 
   const verifyPayment = async () => {
     setVerifying(true); setVerifyErr("");
-    const account = await sbGetAccount(user.email);
-    if (account?.is_paid) {
-      await onSuccess();
-      setStep("success");
-    } else {
-      setVerifyErr("Payment not confirmed yet. If you just paid, please wait a moment and try again.");
+    try {
+      // First check Supabase (fast, covers webhook-marked accounts)
+      const account = await sbGetAccount(user.email);
+      if (account?.is_paid) {
+        await onSuccess();
+        setStep("success");
+        setVerifying(false);
+        return;
+      }
+      // Fallback: ask our server to verify directly with Stripe
+      const res = await fetch("/api/verify-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: user.email }),
+      });
+      const data = await res.json();
+      if (data?.paid) {
+        // Server confirmed payment and updated Supabase — reload account
+        const updated = await sbGetAccount(user.email);
+        if (updated?.is_paid) {
+          await onSuccess();
+          setStep("success");
+        } else {
+          setVerifyErr("Payment confirmed but account update failed. Please contact support.");
+        }
+      } else {
+        setVerifyErr("Payment not confirmed yet. If you just paid, please wait a moment and try again.");
+      }
+    } catch {
+      setVerifyErr("Could not reach payment server. Check your connection and try again.");
     }
     setVerifying(false);
   };
