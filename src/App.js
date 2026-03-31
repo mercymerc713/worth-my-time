@@ -767,6 +767,34 @@ function StatusBar({ user, onUpgrade, onLogout }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// AGE GATE MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+function AgeGateModal({ onConfirm, onDeny, darkMode=true }) {
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(16px)"}}>
+      <div style={{background:darkMode?"#0d0d18":"#fff",border:`1px solid ${darkMode?"rgba(255,100,50,0.4)":"rgba(200,80,30,0.3)"}`,borderRadius:24,width:"100%",maxWidth:380,padding:32,textAlign:"center",boxShadow:"0 0 80px rgba(249,115,22,0.2)"}}>
+        <div style={{fontSize:48,marginBottom:16}}>🔞</div>
+        <h2 style={{margin:"0 0 10px",fontSize:22,fontFamily:"'Bitter',serif",color:darkMode?"white":"#0f0f1a",fontWeight:700}}>Age Verification</h2>
+        <p style={{fontSize:12,color:darkMode?"rgba(255,255,255,0.5)":"rgba(0,0,0,0.5)",fontFamily:"'Space Mono',monospace",lineHeight:1.7,margin:"0 0 28px"}}>
+          This will show games rated Mature (17+) and Adults Only.<br/>You must be 18 or older to continue.
+        </p>
+        <button onClick={onConfirm}
+          style={{width:"100%",padding:"13px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#f97316,#ef4444)",color:"white",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"'Space Mono',monospace",marginBottom:10,letterSpacing:"0.3px"}}>
+          Yes, I am 18 or older
+        </button>
+        <button onClick={onDeny}
+          style={{width:"100%",padding:"11px",borderRadius:12,border:`1px solid ${darkMode?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.12)"}`,background:"transparent",color:darkMode?"rgba(255,255,255,0.4)":"rgba(0,0,0,0.4)",fontWeight:400,fontSize:12,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
+          No, take me back
+        </button>
+        <p style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.2)":"rgba(0,0,0,0.25)",fontFamily:"'Space Mono',monospace",marginTop:16,lineHeight:1.5}}>
+          Your choice is saved locally on this device.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PAYWALL MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 function PaywallModal({ user, onClose, onSuccess }) {
@@ -2565,6 +2593,10 @@ export default function App() {
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [activeView, setActiveView] = useState("discover"); // discover | community
+  const [ageVerified, setAgeVerified] = useState(() => localStorage.getItem("wmt_age_verified") === "1");
+  const [showAgeGate, setShowAgeGate] = useState(false);
+  const ageVerifiedRef = useRef(ageVerified);
+  useEffect(() => { ageVerifiedRef.current = ageVerified; }, [ageVerified]);
   const debRef = useRef(null);
 
   // Load user from storage — refresh from Supabase to get latest trial/paid status
@@ -2652,6 +2684,8 @@ export default function App() {
       });
       if (f.minScore !== "any") p.set("metacritic", `${f.minScore},100`);
       if (f.platform !== "all" && PLATFORM_MAP[f.platform]) p.set("platforms", PLATFORM_MAP[f.platform]);
+      // Exclude Adults Only (5) by default; only include when age verified
+      if (!ageVerifiedRef.current) p.set("esrb_ratings", "1,2,3,4");
       const gs = [];
       if (f.time === "short") gs.push("puzzle,arcade,card-games,fighting,racing,sports");
       if (f.time === "long")  gs.push("role-playing-games-rpg,strategy,simulation");
@@ -2706,10 +2740,10 @@ export default function App() {
 
   // Lock body scroll when any modal is open
   useEffect(() => {
-    const anyModal = viewProfile || showEditProfile || showFAQ || showPrivacy || showTerms;
+    const anyModal = viewProfile || showEditProfile || showFAQ || showPrivacy || showTerms || showAgeGate;
     document.body.style.overflow = anyModal ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
-  }, [viewProfile, showEditProfile, showFAQ, showPrivacy, showTerms]);
+  }, [viewProfile, showEditProfile, showFAQ, showPrivacy, showTerms, showAgeGate]);
 
   // Auto-load a random page of top-rated games on first login
   useEffect(() => {
@@ -2812,6 +2846,8 @@ export default function App() {
       ];
       const results = (data.results||[]).filter(g => {
         if (!g.background_image) return false;
+        // Must have an explicit ESRB rating — unrated games are excluded (many adult games slip through as unrated)
+        if (!g.esrb_rating) return false;
         const genres = (g.genres||[]).map(g=>g.slug);
         if (genres.some(s => BLOCKED_GENRES.includes(s))) return false;
         const title = (g.name||"").toLowerCase();
@@ -2946,6 +2982,18 @@ export default function App() {
                   {label}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* 18+ Toggle */}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:darkMode?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.05)",border:`1px solid ${ageVerified?"rgba(249,115,22,0.4)":darkMode?"rgba(255,255,255,0.09)":"rgba(0,0,0,0.15)"}`,borderRadius:14,padding:"10px 14px",cursor:"pointer",transition:"all .2s"}}
+            onClick={()=>{ if(ageVerified){ localStorage.removeItem("wmt_age_verified"); setAgeVerified(false); setTimeout(()=>fetchGames(search,filters,sortBy,1),50); } else { setShowAgeGate(true); } }}>
+            <div>
+              <div style={{fontSize:9,color:ageVerified?"#f97316":darkMode?"rgba(255,255,255,0.35)":"#111",fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800}}>🔞 MATURE CONTENT</div>
+              <div style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.4)",fontFamily:"'Space Mono',monospace",marginTop:3}}>{ageVerified ? "Showing Mature & Adults Only games" : "18+ content hidden — tap to enable"}</div>
+            </div>
+            <div style={{width:36,height:20,borderRadius:10,background:ageVerified?"#f97316":"rgba(255,255,255,0.1)",position:"relative",transition:"background .2s",flexShrink:0}}>
+              <div style={{position:"absolute",top:2,left:ageVerified?18:2,width:16,height:16,borderRadius:"50%",background:"white",transition:"left .2s",boxShadow:"0 1px 4px rgba(0,0,0,0.4)"}}/>
             </div>
           </div>
 
@@ -3131,6 +3179,9 @@ export default function App() {
       {showFAQ && <FAQModal onClose={()=>setShowFAQ(false)} darkMode={darkMode}/>}
       {showPrivacy && <PrivacyModal onClose={()=>setShowPrivacy(false)}/>}
       {showTerms && <TermsModal onClose={()=>setShowTerms(false)}/>}
+      {showAgeGate && <AgeGateModal darkMode={darkMode}
+        onConfirm={()=>{ localStorage.setItem("wmt_age_verified","1"); setAgeVerified(true); setShowAgeGate(false); setTimeout(()=>fetchGames(search,filters,sortBy,1),50); }}
+        onDeny={()=>setShowAgeGate(false)}/>}
     </>
   );
 }
