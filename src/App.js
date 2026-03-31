@@ -459,6 +459,28 @@ async function getProfileByTag(gamerTag) {
   } catch { return null; }
 }
 
+// Backlog helpers — store slim game objects in profiles.backlog JSONB
+async function addToBacklog(email, game) {
+  const profile = await getProfile(email);
+  const current = profile?.backlog || [];
+  if (current.some(g => g.id === game.id)) return;
+  const updated = [...current, { id: game.id, name: game.name, background_image: game.background_image || null, slug: game.slug || null }];
+  await upsertProfile({ user_email: email, backlog: updated });
+  return updated;
+}
+
+async function removeFromBacklog(email, gameId) {
+  const profile = await getProfile(email);
+  const updated = (profile?.backlog || []).filter(g => g.id !== gameId);
+  await upsertProfile({ user_email: email, backlog: updated });
+  return updated;
+}
+
+// Showcase helpers — store slim game objects in profiles.showcase_games JSONB
+async function saveShowcase(email, games) {
+  await upsertProfile({ user_email: email, showcase_games: games });
+}
+
 async function getUserReviews(email) {
   try {
     const data = await sbFetch(`/reviews?user_email=eq.${encodeURIComponent(email)}&order=created_at.desc&limit=20`);
@@ -1747,8 +1769,9 @@ function FAQModal({ onClose, darkMode=true }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // GAME CARD
 // ─────────────────────────────────────────────────────────────────────────────
-function GameCard({ game, onClick, locked, darkMode=true }) {
+function GameCard({ game, onClick, locked, darkMode=true, currentUser=null, inBacklog=false, onToggleBacklog=null }) {
   const [hov, setHov] = useState(false);
+  const [backlogBusy, setBacklogBusy] = useState(false);
   if (!game) return null;
   let scores, color, cat, catLbl;
   try {
@@ -1800,6 +1823,19 @@ function GameCard({ game, onClick, locked, darkMode=true }) {
           <span>⏱ {scores.hltb.session}</span>
           <span>📖 {scores.hltb.main}</span>
         </div>
+        {currentUser && onToggleBacklog && (
+          <button
+            onClick={async e => {
+              e.stopPropagation();
+              if (backlogBusy) return;
+              setBacklogBusy(true);
+              await onToggleBacklog(game);
+              setBacklogBusy(false);
+            }}
+            style={{marginTop:9,width:"100%",padding:"6px 0",borderRadius:8,border:`1px solid ${inBacklog?"rgba(56,189,248,0.4)":"rgba(255,255,255,0.1)"}`,background:inBacklog?"rgba(56,189,248,0.1)":"transparent",color:inBacklog?"#38bdf8":"rgba(255,255,255,0.4)",fontSize:10,fontFamily:"'Space Mono',monospace",cursor:"pointer",transition:"all .2s",fontWeight:inBacklog?700:400}}>
+            {backlogBusy ? "..." : inBacklog ? "✓ In Backlog" : "📚 + Backlog"}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1952,7 +1988,12 @@ function EditProfileModal({ user, onClose, onSave }) {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [err, setErr] = useState("");
-  const [tab, setTab] = useState("identity"); // identity | appearance | status | controls
+  const [tab, setTab] = useState("identity"); // identity | appearance | status | showcase | controls
+  const [showcaseGames, setShowcaseGames] = useState([]);
+  const [showcaseQuery, setShowcaseQuery] = useState("");
+  const [showcaseResults, setShowcaseResults] = useState([]);
+  const [searchingShowcase, setSearchingShowcase] = useState(false);
+  const [savingShowcase, setSavingShowcase] = useState(false);
 
   useEffect(() => {
     getProfile(user.email).then(p => {
@@ -1964,6 +2005,7 @@ function EditProfileModal({ user, onClose, onSave }) {
         setAvatarColor(p.avatar_color || "#a78bfa");
         setAvatarUrl(p.avatar_url || "");
         setBannerUrl(p.banner_url || "");
+        setShowcaseGames(p.showcase_games || []);
       }
     });
   }, [user.email]);
@@ -2049,11 +2091,11 @@ function EditProfileModal({ user, onClose, onSave }) {
           </div>
 
           {/* Tabs */}
-          <div style={{display:"flex",background:"rgba(0,0,0,0.4)",borderRadius:10,padding:3,marginBottom:20,gap:3}}>
-            {[["identity","👤 Identity"],["appearance","🎨 Look"],["status","🎮 Status"],["controls","🔒 Controls"]].map(([id,lbl])=>(
+          <div style={{display:"flex",background:"rgba(0,0,0,0.4)",borderRadius:10,padding:3,marginBottom:20,gap:3,flexWrap:"wrap"}}>
+            {[["identity","👤"],["appearance","🎨"],["status","🎮"],["showcase","📌"],["controls","🔒"]].map(([id,lbl])=>(
               <button key={id} onClick={()=>setTab(id)}
-                style={{flex:1,background:tab===id?"rgba(167,139,250,0.2)":"transparent",color:tab===id?"#a78bfa":"rgba(255,255,255,0.4)",border:`1px solid ${tab===id?"rgba(167,139,250,0.4)":"transparent"}`,borderRadius:8,padding:"8px 4px",cursor:"pointer",fontSize:10,fontFamily:"'Space Mono',monospace",fontWeight:tab===id?700:400}}>
-                {lbl}
+                style={{flex:1,background:tab===id?"rgba(167,139,250,0.2)":"transparent",color:tab===id?"#a78bfa":"rgba(255,255,255,0.4)",border:`1px solid ${tab===id?"rgba(167,139,250,0.4)":"transparent"}`,borderRadius:8,padding:"8px 4px",cursor:"pointer",fontSize:11,fontFamily:"'Space Mono',monospace",fontWeight:tab===id?700:400,minWidth:0}}>
+                {lbl} <span style={{fontSize:8,display:"block",letterSpacing:0.5}}>{id.toUpperCase()}</span>
               </button>
             ))}
           </div>
@@ -2102,14 +2144,89 @@ function EditProfileModal({ user, onClose, onSave }) {
             </div>
           )}
 
+          {/* Showcase tab */}
+          {tab==="showcase" && (
+            <div>
+              <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",letterSpacing:1,marginBottom:12}}>PIN YOUR FAVORITES (up to 6) — shown publicly on your profile</div>
+              {/* Current showcase */}
+              {showcaseGames.length > 0 && (
+                <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
+                  {showcaseGames.map((g,i) => (
+                    <div key={g.id} style={{display:"flex",alignItems:"center",gap:10,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:10,padding:"8px 12px"}}>
+                      {g.background_image && <img src={g.background_image} alt="" style={{width:36,height:28,objectFit:"cover",borderRadius:5,flexShrink:0}}/>}
+                      <div style={{flex:1,fontSize:12,color:"white",fontFamily:"'Bitter',serif",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.name}</div>
+                      <button onClick={()=>setShowcaseGames(arr=>arr.filter((_,j)=>j!==i))}
+                        style={{background:"rgba(248,113,113,0.1)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:6,padding:"3px 8px",color:"#f87171",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace",flexShrink:0}}>
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {showcaseGames.length < 6 && (
+                <>
+                  <div style={{position:"relative",marginBottom:10}}>
+                    <input
+                      placeholder="Search for a game to pin..."
+                      value={showcaseQuery}
+                      onChange={async e => {
+                        const q = e.target.value;
+                        setShowcaseQuery(q);
+                        if (!q.trim() || q.trim().length < 2) { setShowcaseResults([]); return; }
+                        setSearchingShowcase(true);
+                        try {
+                          const res = await fetch(`${RAWG_BASE}/games?key=${RAWG_KEY}&search=${encodeURIComponent(q)}&page_size=6&ordering=-rating`);
+                          const data = await res.json();
+                          setShowcaseResults((data.results||[]).filter(g=>g.background_image).slice(0,6));
+                        } catch { setShowcaseResults([]); }
+                        setSearchingShowcase(false);
+                      }}
+                      style={{width:"100%",background:"rgba(0,0,0,0.4)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"10px 14px",color:"white",fontSize:12,fontFamily:"'Space Mono',monospace",boxSizing:"border-box"}}
+                    />
+                    {searchingShowcase && <div style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",fontSize:10,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace"}}>...</div>}
+                  </div>
+                  {showcaseResults.length > 0 && (
+                    <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:10}}>
+                      {showcaseResults.map(g => {
+                        const already = showcaseGames.some(x=>x.id===g.id);
+                        return (
+                          <div key={g.id} style={{display:"flex",alignItems:"center",gap:10,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:9,padding:"7px 10px",cursor:already?"default":"pointer",opacity:already?0.5:1}}
+                            onClick={()=>{
+                              if (already || showcaseGames.length>=6) return;
+                              setShowcaseGames(arr=>[...arr, { id:g.id, name:g.name, background_image:g.background_image, slug:g.slug||null }]);
+                              setShowcaseQuery(""); setShowcaseResults([]);
+                            }}>
+                            <img src={g.background_image} alt="" style={{width:40,height:30,objectFit:"cover",borderRadius:5,flexShrink:0}}/>
+                            <div style={{flex:1,fontSize:12,color:"white",fontFamily:"'Bitter',serif",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.name}</div>
+                            <span style={{fontSize:10,color:already?"#4ade80":"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",flexShrink:0}}>{already?"✓ Added":"+ Add"}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+              <button
+                onClick={async () => {
+                  setSavingShowcase(true);
+                  try { await saveShowcase(user.email, showcaseGames); onSave({ showcase_games: showcaseGames }); } catch(e) { setErr("Failed to save showcase."); }
+                  setSavingShowcase(false);
+                }}
+                disabled={savingShowcase}
+                style={{width:"100%",background:"linear-gradient(135deg,#e879f9,#a78bfa)",border:"none",borderRadius:11,padding:"12px",color:"white",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"'Space Mono',monospace",marginTop:4,opacity:savingShowcase?0.7:1}}>
+                {savingShowcase ? "Saving..." : "💾 Save Showcase →"}
+              </button>
+            </div>
+          )}
+
           {tab==="controls" && (
             <KidsModeSettings/>
           )}
 
-          {tab !== "controls" && err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:10}}>⚠ {err}</div>}
+          {tab !== "controls" && tab !== "showcase" && err && <div style={{color:"#f87171",fontSize:11,fontFamily:"'Space Mono',monospace",marginTop:10}}>⚠ {err}</div>}
 
           <div style={{display:"flex",gap:8,marginTop:20}}>
-            {tab !== "controls" && <button onClick={handleSave} disabled={saving}
+            {tab !== "controls" && tab !== "showcase" && <button onClick={handleSave} disabled={saving}
               style={{flex:1,background:"linear-gradient(135deg,#a78bfa,#7c3aed)",border:"none",borderRadius:11,padding:"13px",color:"white",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"'Space Mono',monospace",opacity:saving?0.7:1}}>
               {saving?"Saving...":"Save Profile →"}
             </button>}
@@ -2317,13 +2434,21 @@ function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile }) 
             <div>
               {showcase.length===0 ? (
                 <div style={{textAlign:"center",padding:"30px 0",color:"rgba(255,255,255,0.25)",fontSize:11,fontFamily:"'Space Mono',monospace"}}>
-                  {isOwnProfile ? "No games showcased yet. Edit your profile to pin your favorites." : "No games showcased yet."}
+                  <div style={{fontSize:28,marginBottom:10}}>📌</div>
+                  {isOwnProfile ? "No games showcased yet. Edit your profile → Showcase to pin your favorites." : "No games showcased yet."}
                 </div>
               ) : (
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12}}>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:10}}>
                   {showcase.map((g,i)=>(
-                    <div key={i} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"12px",textAlign:"center"}}>
-                      <div style={{fontSize:13,color:"white",fontWeight:700,fontFamily:"'Bitter',serif"}}>{g.name}</div>
+                    <div key={i} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,overflow:"hidden",transition:"border .2s"}}
+                      onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(232,121,249,0.3)"}
+                      onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.08)"}>
+                      {g.background_image
+                        ? <img src={g.background_image} alt={g.name} style={{width:"100%",height:90,objectFit:"cover",display:"block"}}/>
+                        : <div style={{width:"100%",height:90,background:"rgba(232,121,249,0.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28}}>🎮</div>}
+                      <div style={{padding:"8px 10px"}}>
+                        <div style={{fontSize:11,color:"white",fontWeight:700,fontFamily:"'Bitter',serif",lineHeight:1.2,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{g.name}</div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -2336,14 +2461,28 @@ function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile }) 
             <div>
               {backlog.length===0 ? (
                 <div style={{textAlign:"center",padding:"30px 0",color:"rgba(255,255,255,0.25)",fontSize:11,fontFamily:"'Space Mono',monospace"}}>
-                  {isOwnProfile ? "Your backlog is empty. Add games you want to play!" : "No backlog games yet."}
+                  <div style={{fontSize:28,marginBottom:10}}>📚</div>
+                  {isOwnProfile ? "Your backlog is empty. Browse games and hit '+ Backlog' to save them here!" : "No backlog games yet."}
                 </div>
               ) : (
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                <div style={{display:"flex",flexDirection:"column",gap:7}}>
                   {backlog.map((g,i)=>(
-                    <div key={i} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",gap:10}}>
-                      <span style={{fontSize:16}}>📚</span>
-                      <div style={{fontSize:13,color:"white",fontFamily:"'Bitter',serif",fontWeight:700}}>{g.name}</div>
+                    <div key={g.id||i} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,display:"flex",alignItems:"center",gap:10,overflow:"hidden",transition:"border .2s"}}
+                      onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(56,189,248,0.2)"}
+                      onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.07)"}>
+                      {g.background_image
+                        ? <img src={g.background_image} alt={g.name} style={{width:56,height:44,objectFit:"cover",flexShrink:0}}/>
+                        : <div style={{width:56,height:44,background:"rgba(56,189,248,0.1)",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🎮</div>}
+                      <div style={{flex:1,fontSize:13,color:"white",fontFamily:"'Bitter',serif",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:4}}>{g.name}</div>
+                      {isOwnProfile && (
+                        <button
+                          onClick={async () => {
+                            const updated = await removeFromBacklog(profileEmail, g.id);
+                            setProfile(p => ({ ...p, backlog: updated }));
+                          }}
+                          style={{background:"transparent",border:"none",color:"rgba(255,255,255,0.2)",fontSize:14,cursor:"pointer",padding:"0 12px",flexShrink:0,lineHeight:"44px"}}
+                          title="Remove from backlog">✕</button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -3163,10 +3302,14 @@ export default function App() {
     try {
       const randomPage = Math.floor(Math.random() * 50) + 1;
       const todayDate = new Date().toISOString().split("T")[0];
-      const p = new URLSearchParams({ key:RAWG_KEY, page_size:20, page:randomPage, ordering:"-rating", dates:`2010-01-01,${todayDate}`, metacritic:"70,100", exclude_additions:"true" });
+      const p = new URLSearchParams({ key:RAWG_KEY, page_size:40, page:randomPage, ordering:"-rating", dates:`2010-01-01,${todayDate}`, metacritic:"70,100", exclude_additions:"true" });
+      if (kidsModeRef.current) p.set("esrb_ratings", "1,2");
       const res = await fetch(`${RAWG_BASE}/games?${p}`);
       const data = await res.json();
-      const results = (data.results||[]).filter(g=>g.background_image);
+      let results = (data.results||[]).filter(g=>g.background_image);
+      if (kidsModeRef.current) {
+        results = results.filter(g => { const id = g.esrb_rating?.id; return id === 1 || id === 2; });
+      }
       if (results.length > 0) setSelected(results[Math.floor(Math.random()*results.length)]);
       setGames(results);
     } catch { setError("Couldn't load a surprise. Try again!"); }
@@ -3425,7 +3568,17 @@ export default function App() {
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:13,marginBottom:26}}>
               {games.map((g,i)=>(
                 <div key={g.id} className="card-anim" style={{animationDelay:`${i*.04}s`}}>
-                  <GameCard game={g} onClick={setSelected} locked={false} darkMode={darkMode}/>
+                  <GameCard game={g} onClick={setSelected} locked={false} darkMode={darkMode}
+                    currentUser={user}
+                    inBacklog={(userProfile?.backlog||[]).some(b=>b.id===g.id)}
+                    onToggleBacklog={async (game) => {
+                      const inBl = (userProfile?.backlog||[]).some(b=>b.id===game.id);
+                      const updated = inBl
+                        ? await removeFromBacklog(user.email, game.id)
+                        : await addToBacklog(user.email, game);
+                      setUserProfile(p => ({ ...p, backlog: updated }));
+                    }}
+                  />
                 </div>
               ))}
             </div>
