@@ -2004,7 +2004,9 @@ function EditProfileModal({ user, onClose, onSave }) {
       onSave(profile);
       onClose();
     } catch(e) {
-      setErr("Failed to save profile. Please try again.");
+      const msg = e?.message || "";
+      // Show the real Supabase error to help diagnose
+      setErr(msg ? `Save failed: ${msg.slice(0,120)}` : "Failed to save profile. Please try again.");
     }
     setSaving(false);
   };
@@ -3232,6 +3234,7 @@ export default function App() {
 
           {/* 18+ Toggle — hidden when Kids Mode is on */}
           {!kidsMode && (
+            <>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:darkMode?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.05)",border:`1px solid ${ageVerified?"rgba(249,115,22,0.4)":darkMode?"rgba(255,255,255,0.09)":"rgba(0,0,0,0.15)"}`,borderRadius:14,padding:"10px 14px",cursor:"pointer",transition:"all .2s"}}
               onClick={()=>{ if(ageVerified){ localStorage.removeItem("wmt_age_verified"); setAgeVerified(false); setTimeout(()=>fetchGames(search,filters,sortBy,1),50); } else { setShowAgeGate(true); } }}>
               <div>
@@ -3242,6 +3245,14 @@ export default function App() {
                 <div style={{position:"absolute",top:2,left:ageVerified?18:2,width:16,height:16,borderRadius:"50%",background:"white",transition:"left .2s",boxShadow:"0 1px 4px rgba(0,0,0,0.4)"}}/>
               </div>
             </div>
+            {/* For Parents hint */}
+            <div onClick={()=>setShowEditProfile(true)} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px",cursor:"pointer",opacity:0.6}} title="Set up Kids Mode">
+              <span style={{fontSize:11}}>👨‍👩‍👧</span>
+              <span style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.45)":"rgba(0,0,0,0.45)",fontFamily:"'Space Mono',monospace",lineHeight:1.5}}>
+                <span style={{textDecoration:"underline"}}>Set up Kids Mode</span> — Profile → 🔒 Controls
+              </span>
+            </div>
+            </>
           )}
 
           {/* Kids Mode active — show sub-filters + banner */}
