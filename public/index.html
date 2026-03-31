@@ -5,17 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#07070f" />
     <meta name="description" content="Worth My Time? — Game intelligence for busy people. Discover games that fit your schedule with Time, Adventure, and Worth It scores across 500,000+ titles." />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="WorthMyTime" />
+
+    <!-- PWA manifest -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Icons -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
 
     <!-- Open Graph / Social sharing -->
     <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://worthmytime.info/" />
     <meta property="og:title" content="Worth My Time?" />
     <meta property="og:description" content="Game intelligence for busy people. Find games that fit your schedule — 500,000+ titles scored for time, adventure, and value." />
+    <meta property="og:image" content="https://worthmytime.info/icon-512.png" />
     <meta property="og:site_name" content="Worth My Time?" />
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="Worth My Time?" />
     <meta name="twitter:description" content="Game intelligence for busy people. 500,000+ games scored for time, adventure, and value." />
+    <meta name="twitter:image" content="https://worthmytime.info/icon-512.png" />
 
     <!-- Fonts — preconnect first, then load async to unblock render -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -28,5 +43,12 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js');
+        });
+      }
+    </script>
   </body>
 </html>
