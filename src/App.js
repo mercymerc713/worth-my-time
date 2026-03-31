@@ -2722,9 +2722,10 @@ export default function App() {
   const [activeView, setActiveView] = useState("discover"); // discover | community
   const [ageVerified, setAgeVerified] = useState(() => localStorage.getItem("wmt_age_verified") === "1");
   const [showAgeGate, setShowAgeGate] = useState(false);
-  const [activeParentFilter, setActiveParentFilter] = useState(null); // "kids"|"adhd"|"autism"|"familycoop"
+  const [activeParentFilter, setActiveParentFilter] = useState(null);
+  const [parentalModeActive, setParentalModeActive] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
-  const [pendingPinAction, setPendingPinAction] = useState(null); // { action:"enable"|"disable", type }
+  const [pendingPinAction, setPendingPinAction] = useState(null); // "enter_mode"|"exit_mode"
   const parentPinSet = () => !!localStorage.getItem(PARENT_PIN_KEY);
   const ageVerifiedRef = useRef(ageVerified);
   useEffect(() => { ageVerifiedRef.current = ageVerified; }, [ageVerified]);
@@ -2885,7 +2886,7 @@ export default function App() {
 
   useEffect(() => {
     if (!user || !access || !hasLoaded) return;
-    setActiveParentFilter(null); // leaving regular search clears any parent filter
+    setActiveParentFilter(null); setParentalModeActive(false); // leaving to regular search exits parental mode
     clearTimeout(debRef.current);
     debRef.current = setTimeout(() => {
       setPage(1);
@@ -3139,8 +3140,27 @@ export default function App() {
           </div>
 
           {/* Parents Section */}
-          <div style={{background:darkMode?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.05)",border:`1px solid ${darkMode?"rgba(255,255,255,0.09)":"rgba(0,0,0,0.15)"}`,borderRadius:14,padding:14}}>
-            <div style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.35)":"#111",fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800,marginBottom:10}}>👨‍👩‍👧 FOR PARENTS</div>
+          <div style={{background:parentalModeActive?"rgba(167,139,250,0.07)":darkMode?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.05)",border:`1px solid ${parentalModeActive?"rgba(167,139,250,0.35)":darkMode?"rgba(255,255,255,0.09)":"rgba(0,0,0,0.15)"}`,borderRadius:14,padding:14,transition:"all .2s"}}>
+            {/* Header row */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{fontSize:9,color:parentalModeActive?"#a78bfa":darkMode?"rgba(255,255,255,0.35)":"#111",fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800}}>
+                👨‍👩‍👧 FOR PARENTS
+              </div>
+              {parentalModeActive ? (
+                <button onClick={()=>{ setPendingPinAction("exit_mode"); setShowPinModal(true); }}
+                  title="Lock parental mode"
+                  style={{display:"flex",alignItems:"center",gap:5,background:"rgba(167,139,250,0.15)",border:"1px solid rgba(167,139,250,0.4)",borderRadius:20,padding:"3px 10px",color:"#a78bfa",fontSize:9,cursor:"pointer",fontFamily:"'Space Mono',monospace",fontWeight:700}}>
+                  🔓 UNLOCKED · LOCK
+                </button>
+              ) : (
+                <button onClick={()=>{ setPendingPinAction("enter_mode"); setShowPinModal(true); }}
+                  title="Unlock parental mode"
+                  style={{display:"flex",alignItems:"center",gap:5,background:"rgba(255,255,255,0.04)",border:`1px solid ${darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.12)"}`,borderRadius:20,padding:"3px 10px",color:darkMode?"rgba(255,255,255,0.35)":"rgba(0,0,0,0.4)",fontSize:9,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
+                  🔒 LOCKED
+                </button>
+              )}
+            </div>
+            {/* Filter buttons — free switching when mode is active, PIN gate when not */}
             <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
               {[
                 ["🧒 Kid Friendly","kids","Games rated Everyone — safe for all ages"],
@@ -3150,29 +3170,39 @@ export default function App() {
               ].map(([label,type,tip])=>{
                 const isActive = activeParentFilter === type;
                 return (
-                  <button key={type} title={tip}
+                  <button key={type} title={parentalModeActive ? tip : "Unlock parental mode to use filters"}
                     onClick={()=>{
+                      if (!parentalModeActive) {
+                        // Must enter mode first
+                        setPendingPinAction("enter_mode");
+                        setShowPinModal(true);
+                        return;
+                      }
+                      // In mode: toggle freely
                       if (isActive) {
-                        // Need PIN to disable
-                        setPendingPinAction({ action:"disable", type });
-                        setShowPinModal(true);
+                        setActiveParentFilter(null);
+                        setPage(1);
+                        fetchGames(search, filters, sortBy, 1);
                       } else {
-                        // Need PIN to enable (set first if not set)
-                        setPendingPinAction({ action:"enable", type });
-                        setShowPinModal(true);
+                        handleParentSearch(type);
                       }
                     }}
                     style={{background:isActive?"rgba(167,139,250,0.18)":darkMode?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.06)",
                       border:`1px solid ${isActive?"rgba(167,139,250,0.6)":darkMode?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.12)"}`,
                       borderRadius:20,padding:"6px 14px",
-                      color:isActive?"#a78bfa":darkMode?"rgba(255,255,255,0.6)":"rgba(0,0,0,0.6)",
+                      color:isActive?"#a78bfa":parentalModeActive?darkMode?"rgba(255,255,255,0.7)":"rgba(0,0,0,0.7)":darkMode?"rgba(255,255,255,0.35)":"rgba(0,0,0,0.35)",
                       fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace",
-                      fontWeight:isActive?700:400,transition:"all .15s"}}>
+                      fontWeight:isActive?700:400,opacity:parentalModeActive?1:0.6,transition:"all .15s"}}>
                     {isActive ? `✓ ${label}` : label}
                   </button>
                 );
               })}
             </div>
+            {!parentalModeActive && (
+              <div style={{fontSize:9,color:darkMode?"rgba(255,255,255,0.2)":"rgba(0,0,0,0.3)",fontFamily:"'Space Mono',monospace",marginTop:8}}>
+                🔒 Tap LOCKED to enter your parental PIN and unlock filters
+              </div>
+            )}
           </div>
 
         </div>
@@ -3339,9 +3369,10 @@ export default function App() {
         onCancel={()=>{ setShowPinModal(false); setPendingPinAction(null); }}
         onSuccess={()=>{
           setShowPinModal(false);
-          if (pendingPinAction?.action === "enable") {
-            handleParentSearch(pendingPinAction.type);
-          } else if (pendingPinAction?.action === "disable") {
+          if (pendingPinAction === "enter_mode") {
+            setParentalModeActive(true);
+          } else if (pendingPinAction === "exit_mode") {
+            setParentalModeActive(false);
             setActiveParentFilter(null);
             setPage(1);
             fetchGames(search, filters, sortBy, 1);
