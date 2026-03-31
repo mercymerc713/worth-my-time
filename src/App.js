@@ -2595,6 +2595,7 @@ export default function App() {
   const [activeView, setActiveView] = useState("discover"); // discover | community
   const [ageVerified, setAgeVerified] = useState(() => localStorage.getItem("wmt_age_verified") === "1");
   const [showAgeGate, setShowAgeGate] = useState(false);
+  const [activeParentFilter, setActiveParentFilter] = useState(null); // "kids"|"adhd"|"autism"|"familycoop"
   const ageVerifiedRef = useRef(ageVerified);
   useEffect(() => { ageVerifiedRef.current = ageVerified; }, [ageVerified]);
   const debRef = useRef(null);
@@ -2754,6 +2755,7 @@ export default function App() {
 
   useEffect(() => {
     if (!user || !access || !hasLoaded) return;
+    setActiveParentFilter(null); // leaving regular search clears any parent filter
     clearTimeout(debRef.current);
     debRef.current = setTimeout(() => {
       setPage(1);
@@ -2761,10 +2763,15 @@ export default function App() {
     }, search ? 400 : 100);
   }, [search, filters, sortBy]);
 
-  useEffect(() => { if (hasLoaded && user && access) fetchGames(search,filters,sortBy,page); }, [page]);
+  useEffect(() => {
+    if (!hasLoaded || !user || !access) return;
+    if (activeParentFilter) handleParentSearch(activeParentFilter, page);
+    else fetchGames(search, filters, sortBy, page);
+  }, [page]);
 
   const handleTimeSearch = (overrideMinutes) => {
     const m = parseInt(overrideMinutes ?? minutes); if (!m) return;
+    setActiveParentFilter(null);
     setMinutes(String(m));
 
     // Each time window maps to DISTINCT genres so results never overlap
@@ -2819,8 +2826,9 @@ export default function App() {
     setError("");
   };
 
-  const handleParentSearch = useCallback(async (type) => {
-    setLoading(true); setError(""); setSearch(""); setPage(1); setFilters(DEFAULT_FILTERS); setMinutes("");
+  const handleParentSearch = useCallback(async (type, pg=1) => {
+    setLoading(true); setError("");
+    if (pg === 1) { setSearch(""); setPage(1); setFilters(DEFAULT_FILTERS); setMinutes(""); setActiveParentFilter(type); }
     const todayDate = new Date().toISOString().split("T")[0];
     // esrb: 1=Everyone, 2=Everyone 10+ only — strictly excludes Teen(3), Mature(4), Adults Only(5)
     const SAFE_ESRB = "1,2";
@@ -2832,7 +2840,7 @@ export default function App() {
     };
     const cfg = configs[type]; if (!cfg) return;
     try {
-      const params = new URLSearchParams({ key:RAWG_KEY, page_size:40, page:1, ordering:cfg.ordering, tags:cfg.tags, esrb_ratings:cfg.esrb, dates:`2000-01-01,${todayDate}`, exclude_additions:"true" });
+      const params = new URLSearchParams({ key:RAWG_KEY, page_size:40, page:pg, ordering:cfg.ordering, tags:cfg.tags, esrb_ratings:cfg.esrb, dates:`2000-01-01,${todayDate}`, exclude_additions:"true" });
       const res = await fetch(`${RAWG_BASE}/games?${params}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
@@ -2891,6 +2899,7 @@ export default function App() {
   }, []);
 
   const handleSurpriseMe = async () => {
+    setActiveParentFilter(null);
     setLoading(true); setError(""); setHasLoaded(true);
     try {
       const randomPage = Math.floor(Math.random() * 50) + 1;
