@@ -440,9 +440,9 @@ async function getProfile(email) {
 
 async function upsertProfile(profile) {
   try {
-    const res = await sbFetch("/profiles", {
+    await sbFetch("/profiles?on_conflict=user_email", {
       method: "POST",
-      headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
+      headers: { "Prefer": "resolution=merge-duplicates,return=minimal" },
       body: JSON.stringify(profile),
     });
     return true;
