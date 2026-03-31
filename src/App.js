@@ -2846,8 +2846,10 @@ export default function App() {
       ];
       const results = (data.results||[]).filter(g => {
         if (!g.background_image) return false;
-        // Must have an explicit ESRB rating — unrated games are excluded (many adult games slip through as unrated)
-        if (!g.esrb_rating) return false;
+        // STRICT: only allow ESRB "Everyone" (1) or "Everyone 10+" (2)
+        // Reject unrated, Teen, Mature, Adults Only — RAWG's API filter is unreliable
+        const esrbId = g.esrb_rating?.id;
+        if (!esrbId || esrbId > 2) return false;
         const genres = (g.genres||[]).map(g=>g.slug);
         if (genres.some(s => BLOCKED_GENRES.includes(s))) return false;
         const title = (g.name||"").toLowerCase();
