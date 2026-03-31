@@ -2196,65 +2196,61 @@ function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile }) 
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:250,display:"flex",alignItems:"stretch",backdropFilter:"blur(16px)",overflowY:"auto"}}>
       <div style={{width:"100%",maxWidth:760,margin:"0 auto",background:"#0d0d18",minHeight:"100vh",position:"relative"}}>
 
-        {/* BANNER — semi-transparent, never covers content */}
-        <div style={{height:160,overflow:"hidden",position:"relative",background:`linear-gradient(135deg,${avatarColor}30,#0d0d18 80%)`}}>
+        {/* BANNER — decorative only, no content overlaps it */}
+        <div style={{height:130,overflow:"hidden",position:"relative",background:`linear-gradient(135deg,${avatarColor}25,#0d0d18 75%)`}}>
           {profile?.banner_url && (
             <img src={profile.banner_url} alt="banner" loading="lazy"
-              style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.45}}/>
+              style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.35}}/>
           )}
-          {/* Strong fade-to-background at bottom so nothing is hidden */}
-          <div style={{position:"absolute",inset:0,background:`linear-gradient(to bottom, transparent 20%, rgba(13,13,24,0.6) 70%, #0d0d18 100%)`}}/>
+          <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom, transparent 30%, #0d0d18 100%)"}}/>
           <button onClick={onClose}
-            style={{position:"absolute",top:14,right:14,background:"rgba(0,0,0,0.55)",border:"1px solid rgba(255,255,255,0.15)",color:"white",borderRadius:10,padding:"7px 14px",cursor:"pointer",fontSize:11,fontFamily:"'Space Mono',monospace",fontWeight:700,backdropFilter:"blur(4px)"}}>
+            style={{position:"absolute",top:12,right:12,background:"rgba(0,0,0,0.6)",border:"1px solid rgba(255,255,255,0.15)",color:"white",borderRadius:9,padding:"6px 13px",cursor:"pointer",fontSize:11,fontFamily:"'Space Mono',monospace",fontWeight:700}}>
             ✕ Close
           </button>
         </div>
 
-        <div style={{padding:"0 22px 48px"}}>
+        <div style={{padding:"16px 20px 48px"}}>
 
-          {/* AVATAR + NAME ROW — sits below banner, no overlap */}
-          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:18,flexWrap:"wrap",gap:14,marginTop:-32}}>
-            <div style={{display:"flex",alignItems:"flex-end",gap:14}}>
-              {/* Avatar */}
-              <div style={{width:80,height:80,borderRadius:"50%",border:`3px solid #0d0d18`,outline:`2px solid ${avatarColor}60`,overflow:"hidden",background:avatarColor,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,flexShrink:0,boxShadow:`0 4px 24px ${avatarColor}50`,position:"relative",zIndex:1}}>
-                {profile?.avatar_url
-                  ? <img src={profile.avatar_url} alt="avatar" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                  : (profile?.avatar_emoji || "🎮")}
-              </div>
-              <div style={{paddingBottom:6}}>
-                <h1 style={{margin:"0 0 3px",fontSize:24,fontFamily:"'Bitter',serif",color:"white",fontWeight:900,lineHeight:1.1}}>{displayName}</h1>
-                {profile?.gamer_tag && <div style={{fontSize:11,color:"rgba(255,255,255,0.38)",fontFamily:"'Space Mono',monospace",marginBottom:3}}>@{profile.gamer_tag}</div>}
-                {profile?.status && (
-                  <div style={{fontSize:10,color:avatarColor,fontFamily:"'Space Mono',monospace",display:"flex",alignItems:"center",gap:5}}>
-                    <span style={{width:6,height:6,borderRadius:"50%",background:"#4ade80",display:"inline-block",flexShrink:0}}/>
-                    {profile.status}
-                  </div>
-                )}
-              </div>
+          {/* AVATAR ROW */}
+          <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:14}}>
+            <div style={{width:72,height:72,borderRadius:"50%",border:`3px solid #0d0d18`,boxShadow:`0 0 0 2px ${avatarColor}50, 0 4px 20px ${avatarColor}40`,overflow:"hidden",background:avatarColor,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,flexShrink:0}}>
+              {profile?.avatar_url
+                ? <img src={profile.avatar_url} alt="avatar" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                : (profile?.avatar_emoji || "🎮")}
             </div>
-
-            {/* Action buttons */}
-            <div style={{display:"flex",gap:8,paddingTop:4}}>
-              {isOwnProfile ? (
-                <button onClick={onEditProfile}
-                  style={{background:"rgba(167,139,250,0.12)",border:"1px solid rgba(167,139,250,0.3)",borderRadius:10,padding:"8px 15px",color:"#a78bfa",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace",transition:"all .2s"}}>
-                  ✏️ Edit Profile
-                </button>
-              ) : (
-                <button onClick={handleFollow}
-                  style={{background:isFollowing?"rgba(255,255,255,0.07)":"linear-gradient(135deg,#a78bfa,#7c3aed)",border:isFollowing?"1px solid rgba(255,255,255,0.12)":"none",borderRadius:10,padding:"8px 15px",color:"white",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace",transition:"all .2s"}}>
-                  {isFollowing?"✓ Following":"+ Follow"}
-                </button>
+            <div style={{flex:1,minWidth:0}}>
+              <h1 style={{margin:"0 0 2px",fontSize:22,fontFamily:"'Bitter',serif",color:"white",fontWeight:900,lineHeight:1.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{displayName}</h1>
+              {profile?.gamer_tag && <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace"}}>@{profile.gamer_tag}</div>}
+              {profile?.status && (
+                <div style={{fontSize:10,color:avatarColor,fontFamily:"'Space Mono',monospace",marginTop:3,display:"flex",alignItems:"center",gap:4}}>
+                  <span style={{width:6,height:6,borderRadius:"50%",background:"#4ade80",flexShrink:0,display:"inline-block"}}/>
+                  {profile.status}
+                </div>
               )}
-              <button onClick={copyLink}
-                style={{background:copied?"rgba(74,222,128,0.12)":"rgba(255,255,255,0.06)",border:`1px solid ${copied?"rgba(74,222,128,0.4)":"rgba(255,255,255,0.1)"}`,borderRadius:10,padding:"8px 13px",color:copied?"#4ade80":"rgba(255,255,255,0.55)",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",transition:"all .2s"}}>
-                {copied ? "✓ Copied!" : "🔗 Share"}
-              </button>
             </div>
           </div>
 
+          {/* Action buttons on their own row — always visible, never clipped */}
+          <div style={{display:"flex",gap:8,marginBottom:18,flexWrap:"wrap"}}>
+            {isOwnProfile ? (
+              <button onClick={onEditProfile}
+                style={{background:"rgba(167,139,250,0.12)",border:"1px solid rgba(167,139,250,0.3)",borderRadius:10,padding:"8px 16px",color:"#a78bfa",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
+                ✏️ Edit Profile
+              </button>
+            ) : (
+              <button onClick={handleFollow}
+                style={{background:isFollowing?"rgba(255,255,255,0.07)":"linear-gradient(135deg,#a78bfa,#7c3aed)",border:isFollowing?"1px solid rgba(255,255,255,0.12)":"none",borderRadius:10,padding:"8px 16px",color:"white",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
+                {isFollowing?"✓ Following":"+ Follow"}
+              </button>
+            )}
+            <button onClick={copyLink}
+              style={{background:copied?"rgba(74,222,128,0.12)":"rgba(255,255,255,0.05)",border:`1px solid ${copied?"rgba(74,222,128,0.4)":"rgba(255,255,255,0.1)"}`,borderRadius:10,padding:"8px 14px",color:copied?"#4ade80":"rgba(255,255,255,0.5)",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",transition:"all .2s"}}>
+              {copied ? "✓ Copied!" : "🔗 Share"}
+            </button>
+          </div>
+
           {/* Bio */}
-          {profile?.bio && <p style={{fontSize:12,color:"rgba(255,255,255,0.55)",fontFamily:"'Space Mono',monospace",lineHeight:1.8,margin:"0 0 18px",maxWidth:540}}>{profile.bio}</p>}
+          {profile?.bio && <p style={{fontSize:12,color:"rgba(255,255,255,0.5)",fontFamily:"'Space Mono',monospace",lineHeight:1.8,margin:"0 0 16px",maxWidth:520}}>{profile.bio}</p>}
 
           {/* STATS ROW */}
           <div style={{display:"flex",gap:0,marginBottom:22,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,overflow:"hidden"}}>
