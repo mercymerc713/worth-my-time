@@ -2778,12 +2778,21 @@ export default function App() {
       const res = await fetch(`${RAWG_BASE}/games?${params}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
-      // Extra client-side safety: filter out any game with adult/mature genres
+      // Extra client-side safety: filter out adult/mature content by genre AND title keywords
       const BLOCKED_GENRES = ["adult","eroge","hentai","pinup","nude"];
+      const BLOCKED_TITLE_WORDS = [
+        "hentai","eroge","nude","naked","nsfw","xxx","porn","sex","lewd","ecchi",
+        "18+","adult","fetish","strip","lingerie","bikini","topless","uncensored",
+        "stuck in","milf","busty","boobs","booty","ass ","sexy girl","hot girl",
+        "washing machine","step","onlyfans",
+      ];
       const results = (data.results||[]).filter(g => {
         if (!g.background_image) return false;
         const genres = (g.genres||[]).map(g=>g.slug);
-        return !genres.some(s => BLOCKED_GENRES.includes(s));
+        if (genres.some(s => BLOCKED_GENRES.includes(s))) return false;
+        const title = (g.name||"").toLowerCase();
+        if (BLOCKED_TITLE_WORDS.some(w => title.includes(w))) return false;
+        return true;
       });
       setGames(results); setTotal(data.count||0); setHasLoaded(true);
     } catch { setError("Couldn't load results. Try again."); }
