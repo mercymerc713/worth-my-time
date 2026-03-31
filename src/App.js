@@ -3017,17 +3017,29 @@ export default function App() {
                 ["🧩 ADHD Friendly","adhd","Short, engaging sessions — easy to pick up and put down"],
                 ["🌈 Autism Safe","autism","Calm, predictable — no jump scares or sensory overload"],
                 ["🎮 Family Co-op","familycoop","Play together on the same couch"],
-              ].map(([label,type,tip])=>(
-                <button key={type} onClick={()=>handleParentSearch(type)} title={tip}
-                  style={{background:darkMode?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.06)",
-                    border:`1px solid ${darkMode?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.12)"}`,
-                    borderRadius:20,padding:"6px 14px",color:darkMode?"rgba(255,255,255,0.6)":"rgba(0,0,0,0.6)",
-                    fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace",transition:"all .15s"}}
-                  onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(167,139,250,0.5)";e.currentTarget.style.color="#a78bfa";}}
-                  onMouseLeave={e=>{e.currentTarget.style.borderColor=darkMode?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.12)";e.currentTarget.style.color=darkMode?"rgba(255,255,255,0.6)":"rgba(0,0,0,0.6)";}}>
-                  {label}
-                </button>
-              ))}
+              ].map(([label,type,tip])=>{
+                const isActive = activeParentFilter === type;
+                return (
+                  <button key={type} title={tip}
+                    onClick={()=>{
+                      if (isActive) {
+                        setActiveParentFilter(null);
+                        setPage(1);
+                        fetchGames(search, filters, sortBy, 1);
+                      } else {
+                        handleParentSearch(type);
+                      }
+                    }}
+                    style={{background:isActive?"rgba(167,139,250,0.18)":darkMode?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.06)",
+                      border:`1px solid ${isActive?"rgba(167,139,250,0.6)":darkMode?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.12)"}`,
+                      borderRadius:20,padding:"6px 14px",
+                      color:isActive?"#a78bfa":darkMode?"rgba(255,255,255,0.6)":"rgba(0,0,0,0.6)",
+                      fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace",
+                      fontWeight:isActive?700:400,transition:"all .15s"}}>
+                    {isActive ? `✓ ${label}` : label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
