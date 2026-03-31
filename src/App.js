@@ -2132,6 +2132,7 @@ function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile }) 
   const [isFollowing, setIsFollowing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("activity");
+  const [copied, setCopied] = useState(false);
   const isOwnProfile = currentUser?.email === profileEmail;
 
   useEffect(() => {
@@ -2157,7 +2158,26 @@ function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile }) 
   };
 
   const copyLink = () => {
-    navigator.clipboard.writeText(`${window.location.origin}?profile=${profile?.gamer_tag || profileEmail}`);
+    const url = `${window.location.origin}?profile=${profile?.gamer_tag || profileEmail}`;
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }).catch(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
+    } else {
+      // Fallback for browsers without clipboard API
+      const el = document.createElement("textarea");
+      el.value = url;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   const displayName = profile?.gamer_tag || profileEmail.split("@")[0];
@@ -2176,30 +2196,37 @@ function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile }) 
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:250,display:"flex",alignItems:"stretch",backdropFilter:"blur(16px)",overflowY:"auto"}}>
       <div style={{width:"100%",maxWidth:760,margin:"0 auto",background:"#0d0d18",minHeight:"100vh",position:"relative"}}>
 
-        {/* BANNER */}
-        <div style={{height:200,overflow:"hidden",position:"relative",background:profile?.banner_url?"transparent":`linear-gradient(135deg,${avatarColor}50,#0d0d18)`}}>
-          {profile?.banner_url && <img src={profile.banner_url} alt="banner" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
-          <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,#0d0d18,transparent 60%)"}}/>
-          <button onClick={onClose} style={{position:"absolute",top:16,right:16,background:"rgba(0,0,0,0.6)",border:"1px solid rgba(255,255,255,0.2)",color:"white",borderRadius:10,padding:"8px 14px",cursor:"pointer",fontSize:12,fontFamily:"'Space Mono',monospace",fontWeight:700}}>✕ Close</button>
+        {/* BANNER — semi-transparent, never covers content */}
+        <div style={{height:160,overflow:"hidden",position:"relative",background:`linear-gradient(135deg,${avatarColor}30,#0d0d18 80%)`}}>
+          {profile?.banner_url && (
+            <img src={profile.banner_url} alt="banner" loading="lazy"
+              style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.45}}/>
+          )}
+          {/* Strong fade-to-background at bottom so nothing is hidden */}
+          <div style={{position:"absolute",inset:0,background:`linear-gradient(to bottom, transparent 20%, rgba(13,13,24,0.6) 70%, #0d0d18 100%)`}}/>
+          <button onClick={onClose}
+            style={{position:"absolute",top:14,right:14,background:"rgba(0,0,0,0.55)",border:"1px solid rgba(255,255,255,0.15)",color:"white",borderRadius:10,padding:"7px 14px",cursor:"pointer",fontSize:11,fontFamily:"'Space Mono',monospace",fontWeight:700,backdropFilter:"blur(4px)"}}>
+            ✕ Close
+          </button>
         </div>
 
-        <div style={{padding:"0 24px 40px",marginTop:-56}}>
+        <div style={{padding:"0 22px 48px"}}>
 
-          {/* AVATAR + NAME ROW */}
-          <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:12}}>
-            <div style={{display:"flex",alignItems:"flex-end",gap:16}}>
+          {/* AVATAR + NAME ROW — sits below banner, no overlap */}
+          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:18,flexWrap:"wrap",gap:14,marginTop:-32}}>
+            <div style={{display:"flex",alignItems:"flex-end",gap:14}}>
               {/* Avatar */}
-              <div style={{width:88,height:88,borderRadius:"50%",border:"4px solid #0d0d18",overflow:"hidden",background:avatarColor,display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,flexShrink:0,boxShadow:`0 0 30px ${avatarColor}60`}}>
+              <div style={{width:80,height:80,borderRadius:"50%",border:`3px solid #0d0d18`,outline:`2px solid ${avatarColor}60`,overflow:"hidden",background:avatarColor,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,flexShrink:0,boxShadow:`0 4px 24px ${avatarColor}50`,position:"relative",zIndex:1}}>
                 {profile?.avatar_url
                   ? <img src={profile.avatar_url} alt="avatar" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                   : (profile?.avatar_emoji || "🎮")}
               </div>
-              <div style={{paddingBottom:4}}>
-                <h1 style={{margin:"0 0 2px",fontSize:26,fontFamily:"'Bitter',serif",color:"white",fontWeight:900}}>{displayName}</h1>
-                {profile?.gamer_tag && <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace"}}>@{profile.gamer_tag}</div>}
+              <div style={{paddingBottom:6}}>
+                <h1 style={{margin:"0 0 3px",fontSize:24,fontFamily:"'Bitter',serif",color:"white",fontWeight:900,lineHeight:1.1}}>{displayName}</h1>
+                {profile?.gamer_tag && <div style={{fontSize:11,color:"rgba(255,255,255,0.38)",fontFamily:"'Space Mono',monospace",marginBottom:3}}>@{profile.gamer_tag}</div>}
                 {profile?.status && (
-                  <div style={{fontSize:11,color:avatarColor,fontFamily:"'Space Mono',monospace",marginTop:4,display:"flex",alignItems:"center",gap:6}}>
-                    <span style={{width:7,height:7,borderRadius:"50%",background:"#4ade80",display:"inline-block"}}/>
+                  <div style={{fontSize:10,color:avatarColor,fontFamily:"'Space Mono',monospace",display:"flex",alignItems:"center",gap:5}}>
+                    <span style={{width:6,height:6,borderRadius:"50%",background:"#4ade80",display:"inline-block",flexShrink:0}}/>
                     {profile.status}
                   </div>
                 )}
@@ -2207,34 +2234,34 @@ function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile }) 
             </div>
 
             {/* Action buttons */}
-            <div style={{display:"flex",gap:8,paddingBottom:4}}>
+            <div style={{display:"flex",gap:8,paddingTop:4}}>
               {isOwnProfile ? (
                 <button onClick={onEditProfile}
-                  style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:10,padding:"9px 16px",color:"white",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
+                  style={{background:"rgba(167,139,250,0.12)",border:"1px solid rgba(167,139,250,0.3)",borderRadius:10,padding:"8px 15px",color:"#a78bfa",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace",transition:"all .2s"}}>
                   ✏️ Edit Profile
                 </button>
               ) : (
                 <button onClick={handleFollow}
-                  style={{background:isFollowing?"rgba(255,255,255,0.08)":"linear-gradient(135deg,#a78bfa,#7c3aed)",border:isFollowing?"1px solid rgba(255,255,255,0.15)":"none",borderRadius:10,padding:"9px 16px",color:"white",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
+                  style={{background:isFollowing?"rgba(255,255,255,0.07)":"linear-gradient(135deg,#a78bfa,#7c3aed)",border:isFollowing?"1px solid rgba(255,255,255,0.12)":"none",borderRadius:10,padding:"8px 15px",color:"white",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace",transition:"all .2s"}}>
                   {isFollowing?"✓ Following":"+ Follow"}
                 </button>
               )}
               <button onClick={copyLink}
-                style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"9px 12px",color:"rgba(255,255,255,0.6)",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
-                🔗 Share
+                style={{background:copied?"rgba(74,222,128,0.12)":"rgba(255,255,255,0.06)",border:`1px solid ${copied?"rgba(74,222,128,0.4)":"rgba(255,255,255,0.1)"}`,borderRadius:10,padding:"8px 13px",color:copied?"#4ade80":"rgba(255,255,255,0.55)",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",transition:"all .2s"}}>
+                {copied ? "✓ Copied!" : "🔗 Share"}
               </button>
             </div>
           </div>
 
           {/* Bio */}
-          {profile?.bio && <p style={{fontSize:13,color:"rgba(255,255,255,0.6)",fontFamily:"'Space Mono',monospace",lineHeight:1.8,margin:"0 0 20px",maxWidth:560}}>{profile.bio}</p>}
+          {profile?.bio && <p style={{fontSize:12,color:"rgba(255,255,255,0.55)",fontFamily:"'Space Mono',monospace",lineHeight:1.8,margin:"0 0 18px",maxWidth:540}}>{profile.bio}</p>}
 
           {/* STATS ROW */}
-          <div style={{display:"flex",gap:20,marginBottom:24,flexWrap:"wrap"}}>
-            {[["💬",reviews.length,"Reviews"],["👥",followers.length,"Followers"],["➕",following.length,"Following"]].map(([icon,val,lbl])=>(
-              <div key={lbl} style={{textAlign:"center"}}>
-                <div style={{fontSize:20,fontWeight:800,color:avatarColor,fontFamily:"'Space Mono',monospace"}}>{val}</div>
-                <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace"}}>{icon} {lbl}</div>
+          <div style={{display:"flex",gap:0,marginBottom:22,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,overflow:"hidden"}}>
+            {[["💬",reviews.length,"Reviews"],["👥",followers.length,"Followers"],["➕",following.length,"Following"]].map(([icon,val,lbl],i,arr)=>(
+              <div key={lbl} style={{flex:1,textAlign:"center",padding:"14px 8px",borderRight:i<arr.length-1?"1px solid rgba(255,255,255,0.07)":"none"}}>
+                <div style={{fontSize:22,fontWeight:900,color:avatarColor,fontFamily:"'Space Mono',monospace",lineHeight:1}}>{val}</div>
+                <div style={{fontSize:9,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",marginTop:4,letterSpacing:0.5}}>{icon} {lbl}</div>
               </div>
             ))}
           </div>
@@ -2254,10 +2281,10 @@ function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile }) 
           </div>
 
           {/* TABS */}
-          <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:"1px solid rgba(255,255,255,0.08)",paddingBottom:0}}>
+          <div style={{display:"flex",gap:0,marginBottom:20,borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
             {[["activity","📋 Activity"],["showcase","📌 Showcase"],["backlog","📚 Backlog"]].map(([id,lbl])=>(
               <button key={id} onClick={()=>setActiveTab(id)}
-                style={{background:"transparent",border:"none",borderBottom:`2px solid ${activeTab===id?avatarColor:"transparent"}`,color:activeTab===id?avatarColor:"rgba(255,255,255,0.4)",padding:"10px 16px",cursor:"pointer",fontSize:11,fontFamily:"'Space Mono',monospace",fontWeight:activeTab===id?700:400,marginBottom:-1,transition:"all .2s"}}>
+                style={{background:"transparent",border:"none",borderBottom:`2px solid ${activeTab===id?avatarColor:"transparent"}`,color:activeTab===id?avatarColor:"rgba(255,255,255,0.35)",padding:"10px 18px",cursor:"pointer",fontSize:11,fontFamily:"'Space Mono',monospace",fontWeight:activeTab===id?700:400,marginBottom:-1,transition:"all .2s"}}>
                 {lbl}
               </button>
             ))}
@@ -2266,18 +2293,23 @@ function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile }) 
           {/* ACTIVITY TAB */}
           {activeTab==="activity" && (
             reviews.length===0 ? (
-              <div style={{textAlign:"center",padding:"30px 0",color:"rgba(255,255,255,0.25)",fontSize:11,fontFamily:"'Space Mono',monospace"}}>No reviews yet</div>
+              <div style={{textAlign:"center",padding:"40px 0",color:"rgba(255,255,255,0.2)",fontSize:11,fontFamily:"'Space Mono',monospace"}}>
+                <div style={{fontSize:28,marginBottom:10}}>🎮</div>No reviews yet
+              </div>
             ) : (
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
                 {reviews.map((r,i)=>(
-                  <div key={`${r.user_email}-${r.game_id || i}`} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"14px 16px"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                      <div style={{fontSize:14,color:"white",fontWeight:700,fontFamily:"'Bitter',serif"}}>{r.game_name}</div>
-                      <div style={{display:"flex",gap:1}}>{[1,2,3,4,5].map(s=><span key={s} style={{fontSize:13,color:s<=r.rating?"#fbbf24":"rgba(255,255,255,0.15)"}}>★</span>)}</div>
+                  <div key={`${r.user_email}-${r.game_id || i}`}
+                    style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"14px 16px",transition:"border .2s"}}
+                    onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(167,139,250,0.2)"}
+                    onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.07)"}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,gap:12}}>
+                      <div style={{fontSize:14,color:"white",fontWeight:700,fontFamily:"'Bitter',serif",lineHeight:1.2}}>{r.game_name}</div>
+                      <div style={{display:"flex",gap:1,flexShrink:0}}>{[1,2,3,4,5].map(s=><span key={s} style={{fontSize:12,color:s<=r.rating?"#fbbf24":"rgba(255,255,255,0.12)"}}>★</span>)}</div>
                     </div>
-                    {r.time_spent && <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace",marginBottom:4}}>⏱ {r.time_spent}</div>}
-                    {r.review_text && <div style={{fontSize:12,color:"rgba(255,255,255,0.65)",fontFamily:"'Space Mono',monospace",lineHeight:1.6}}>{r.review_text}</div>}
-                    <div style={{fontSize:9,color:"rgba(255,255,255,0.2)",fontFamily:"'Space Mono',monospace",marginTop:6}}>{new Date(r.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
+                    {r.time_spent && <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",marginBottom:6,display:"flex",alignItems:"center",gap:4}}><span>⏱</span>{r.time_spent}</div>}
+                    {r.review_text && <div style={{fontSize:12,color:"rgba(255,255,255,0.6)",fontFamily:"'Space Mono',monospace",lineHeight:1.7}}>{r.review_text}</div>}
+                    <div style={{fontSize:9,color:"rgba(255,255,255,0.18)",fontFamily:"'Space Mono',monospace",marginTop:8}}>{new Date(r.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
                   </div>
                 ))}
               </div>
