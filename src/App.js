@@ -767,6 +767,133 @@ function StatusBar({ user, onUpgrade, onLogout }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PARENTAL CONTROLS PIN MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+const PARENT_PIN_KEY = "wmt_parent_pin"; // stores hashed PIN in localStorage
+
+async function hashPin(pin) {
+  const data = new TextEncoder().encode(pin + "wmt-salt-2026");
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function ParentalPinModal({ mode, onSuccess, onCancel, darkMode=true }) {
+  // mode: "set" (first time) | "verify" (unlock/lock)
+  const [pin, setPin] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => { setTimeout(() => inputRef.current?.focus(), 100); }, []);
+
+  const handleDigit = (d) => {
+    if (mode === "set") {
+      if (pin.length < 4) { setPin(p => p + d); setErr(""); }
+    } else {
+      if (pin.length < 4) { setPin(p => p + d); setErr(""); }
+    }
+  };
+
+  const handleConfirmDigit = (d) => {
+    if (confirm.length < 4) setConfirm(c => c + d);
+  };
+
+  const handleBack = () => {
+    if (mode === "set" && pin.length === 4 && confirm.length > 0) setConfirm(c => c.slice(0, -1));
+    else setPin(p => p.slice(0, -1));
+  };
+
+  const handleSubmit = async () => {
+    setLoading(true); setErr("");
+    if (mode === "set") {
+      if (pin.length < 4) { setErr("Enter a 4-digit PIN."); setLoading(false); return; }
+      if (pin !== confirm) { setErr("PINs don't match. Try again."); setConfirm(""); setLoading(false); return; }
+      const hashed = await hashPin(pin);
+      localStorage.setItem(PARENT_PIN_KEY, hashed);
+      onSuccess();
+    } else {
+      const stored = localStorage.getItem(PARENT_PIN_KEY);
+      const hashed = await hashPin(pin);
+      if (hashed === stored) { onSuccess(); }
+      else { setErr("Wrong PIN. Try again."); setPin(""); }
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    if (mode === "set" && pin.length === 4 && confirm.length === 4) handleSubmit();
+    if (mode === "verify" && pin.length === 4) handleSubmit();
+  }, [pin, confirm]);
+
+  const dots = (val) => [0,1,2,3].map(i => (
+    <div key={i} style={{width:14,height:14,borderRadius:"50%",background:i<val.length?"#a78bfa":"rgba(255,255,255,0.15)",transition:"background .15s"}}/>
+  ));
+
+  const isConfirmStep = mode === "set" && pin.length === 4;
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(16px)"}}>
+      <div style={{background:darkMode?"#0d0d18":"#fff",border:`1px solid rgba(167,139,250,0.3)`,borderRadius:24,width:"100%",maxWidth:320,padding:28,textAlign:"center",boxShadow:"0 0 60px rgba(167,139,250,0.15)"}}>
+        <div style={{fontSize:36,marginBottom:12}}>🔒</div>
+        <h2 style={{margin:"0 0 6px",fontSize:18,fontFamily:"'Bitter',serif",color:darkMode?"white":"#0f0f1a",fontWeight:700}}>
+          {mode === "set" ? "Set Parental PIN" : "Parental Controls"}
+        </h2>
+        <p style={{fontSize:11,color:darkMode?"rgba(255,255,255,0.4)":"rgba(0,0,0,0.5)",fontFamily:"'Space Mono',monospace",margin:"0 0 20px",lineHeight:1.6}}>
+          {mode === "set"
+            ? isConfirmStep ? "Confirm your PIN" : "Choose a 4-digit PIN"
+            : "Enter your parental PIN"}
+        </p>
+
+        {/* PIN dots */}
+        <div style={{display:"flex",gap:12,justifyContent:"center",marginBottom:20}}>
+          {dots(isConfirmStep ? confirm : pin)}
+        </div>
+
+        {/* Number pad */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:12}}>
+          {[1,2,3,4,5,6,7,8,9].map(d => (
+            <button key={d} onClick={()=>isConfirmStep?handleConfirmDigit(String(d)):handleDigit(String(d))}
+              style={{padding:"14px 0",borderRadius:12,border:`1px solid ${darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.1)"}`,
+                background:darkMode?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.04)",
+                color:darkMode?"white":"#0f0f1a",fontSize:18,fontWeight:700,cursor:"pointer",
+                fontFamily:"'Space Mono',monospace",transition:"background .1s"}}
+              onMouseDown={e=>e.currentTarget.style.background="rgba(167,139,250,0.2)"}
+              onMouseUp={e=>e.currentTarget.style.background=darkMode?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.04)"}>
+              {d}
+            </button>
+          ))}
+          <div/>
+          <button onClick={()=>isConfirmStep?handleConfirmDigit("0"):handleDigit("0")}
+            style={{padding:"14px 0",borderRadius:12,border:`1px solid ${darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.1)"}`,
+              background:darkMode?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.04)",
+              color:darkMode?"white":"#0f0f1a",fontSize:18,fontWeight:700,cursor:"pointer",
+              fontFamily:"'Space Mono',monospace"}}
+            onMouseDown={e=>e.currentTarget.style.background="rgba(167,139,250,0.2)"}
+            onMouseUp={e=>e.currentTarget.style.background=darkMode?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.04)"}>
+            0
+          </button>
+          <button onClick={handleBack}
+            style={{padding:"14px 0",borderRadius:12,border:"none",background:"transparent",
+              color:darkMode?"rgba(255,255,255,0.5)":"rgba(0,0,0,0.4)",fontSize:18,cursor:"pointer"}}>
+            ⌫
+          </button>
+        </div>
+
+        {err && <div style={{fontSize:11,color:"#f87171",fontFamily:"'Space Mono',monospace",marginBottom:10}}>{err}</div>}
+        {loading && <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace",marginBottom:10}}>Checking...</div>}
+
+        <button onClick={onCancel}
+          style={{background:"none",border:"none",color:darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.35)",
+            fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",padding:"8px 0"}}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // AGE GATE MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 function AgeGateModal({ onConfirm, onDeny, darkMode=true }) {
@@ -2596,6 +2723,9 @@ export default function App() {
   const [ageVerified, setAgeVerified] = useState(() => localStorage.getItem("wmt_age_verified") === "1");
   const [showAgeGate, setShowAgeGate] = useState(false);
   const [activeParentFilter, setActiveParentFilter] = useState(null); // "kids"|"adhd"|"autism"|"familycoop"
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pendingPinAction, setPendingPinAction] = useState(null); // { action:"enable"|"disable", type }
+  const parentPinSet = () => !!localStorage.getItem(PARENT_PIN_KEY);
   const ageVerifiedRef = useRef(ageVerified);
   useEffect(() => { ageVerifiedRef.current = ageVerified; }, [ageVerified]);
   const debRef = useRef(null);
@@ -2741,10 +2871,10 @@ export default function App() {
 
   // Lock body scroll when any modal is open
   useEffect(() => {
-    const anyModal = viewProfile || showEditProfile || showFAQ || showPrivacy || showTerms || showAgeGate;
+    const anyModal = viewProfile || showEditProfile || showFAQ || showPrivacy || showTerms || showAgeGate || showPinModal;
     document.body.style.overflow = anyModal ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
-  }, [viewProfile, showEditProfile, showFAQ, showPrivacy, showTerms, showAgeGate]);
+  }, [viewProfile, showEditProfile, showFAQ, showPrivacy, showTerms, showAgeGate, showPinModal]);
 
   // Auto-load a random page of top-rated games on first login
   useEffect(() => {
@@ -3023,11 +3153,13 @@ export default function App() {
                   <button key={type} title={tip}
                     onClick={()=>{
                       if (isActive) {
-                        setActiveParentFilter(null);
-                        setPage(1);
-                        fetchGames(search, filters, sortBy, 1);
+                        // Need PIN to disable
+                        setPendingPinAction({ action:"disable", type });
+                        setShowPinModal(true);
                       } else {
-                        handleParentSearch(type);
+                        // Need PIN to enable (set first if not set)
+                        setPendingPinAction({ action:"enable", type });
+                        setShowPinModal(true);
                       }
                     }}
                     style={{background:isActive?"rgba(167,139,250,0.18)":darkMode?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.06)",
@@ -3202,6 +3334,20 @@ export default function App() {
       {showFAQ && <FAQModal onClose={()=>setShowFAQ(false)} darkMode={darkMode}/>}
       {showPrivacy && <PrivacyModal onClose={()=>setShowPrivacy(false)}/>}
       {showTerms && <TermsModal onClose={()=>setShowTerms(false)}/>}
+      {showPinModal && <ParentalPinModal darkMode={darkMode}
+        mode={parentPinSet() ? "verify" : "set"}
+        onCancel={()=>{ setShowPinModal(false); setPendingPinAction(null); }}
+        onSuccess={()=>{
+          setShowPinModal(false);
+          if (pendingPinAction?.action === "enable") {
+            handleParentSearch(pendingPinAction.type);
+          } else if (pendingPinAction?.action === "disable") {
+            setActiveParentFilter(null);
+            setPage(1);
+            fetchGames(search, filters, sortBy, 1);
+          }
+          setPendingPinAction(null);
+        }}/>}
       {showAgeGate && <AgeGateModal darkMode={darkMode}
         onConfirm={()=>{ localStorage.setItem("wmt_age_verified","1"); setAgeVerified(true); setShowAgeGate(false); setTimeout(()=>fetchGames(search,filters,sortBy,1),50); }}
         onDeny={()=>setShowAgeGate(false)}/>}
