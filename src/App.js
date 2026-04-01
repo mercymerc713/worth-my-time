@@ -750,15 +750,21 @@ function Input({ placeholder, value, onChange, type="text", onKeyDown, style:s={
 
 function Btn({ children, onClick, variant="primary", style:s={}, disabled=false }) {
   const base = {border:"none",borderRadius:11,padding:"13px 20px",fontWeight:700,fontSize:13,
-    cursor:disabled?"not-allowed":"pointer",fontFamily:"'Space Mono',monospace",transition:"opacity .2s",...s};
+    cursor:disabled?"not-allowed":"pointer",fontFamily:"'Space Mono',monospace",
+    transition:"opacity .2s, box-shadow .2s, transform .15s",...s};
   const variants = {
-    primary: {background:"white",color:"#07070f"},
-    purple:  {background:"linear-gradient(135deg,#a78bfa,#7c3aed)",color:"white"},
+    primary: {background:"white",color:"#07070f",boxShadow:"0 0 18px rgba(255,255,255,0.18)"},
+    purple:  {background:"linear-gradient(135deg,#a78bfa,#7c3aed)",color:"white",boxShadow:"0 4px 24px rgba(139,92,246,0.45)"},
     ghost:   {background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.6)",border:"1px solid rgba(255,255,255,0.1)"},
     danger:  {background:"rgba(239,68,68,0.15)",color:"#f87171",border:"1px solid rgba(239,68,68,0.3)"},
-    gold:    {background:"linear-gradient(135deg,#f59e0b,#d97706)",color:"#07070f"},
+    gold:    {background:"linear-gradient(135deg,#f59e0b,#d97706)",color:"#07070f",boxShadow:"0 4px 20px rgba(245,158,11,0.4)"},
   };
-  return <button onClick={disabled?undefined:onClick} style={{...base,...variants[variant],...s}} onMouseEnter={e=>!disabled&&(e.currentTarget.style.opacity=".85")} onMouseLeave={e=>e.currentTarget.style.opacity="1"}>{children}</button>;
+  return <button onClick={disabled?undefined:onClick}
+    style={{...base,...variants[variant],...s}}
+    onMouseEnter={e=>{ if(!disabled){ e.currentTarget.style.opacity=".88"; e.currentTarget.style.transform="translateY(-1px)"; }}}
+    onMouseLeave={e=>{ e.currentTarget.style.opacity="1"; e.currentTarget.style.transform="translateY(0)"; }}>
+    {children}
+  </button>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1261,14 +1267,14 @@ function AuthScreen({ onLogin }) {
   };
 
   return (
-    <div style={{minHeight:"100vh",background:"#07070f",backgroundImage:"radial-gradient(ellipse at 30% 20%, #1a0535 0%, transparent 55%), radial-gradient(ellipse at 70% 80%, #051528 0%, transparent 55%)"}}>
+    <div style={{minHeight:"100vh",background:"#05050e",backgroundImage:"radial-gradient(ellipse at 25% 15%, #200a42 0%, transparent 50%), radial-gradient(ellipse at 75% 85%, #051a35 0%, transparent 50%), radial-gradient(ellipse at 50% 50%, #0d0820 0%, transparent 70%)"}}>
 
       {/* ── HERO SECTION ── */}
       <div style={{textAlign:"center",padding:"52px 20px 40px",maxWidth:700,margin:"0 auto"}}>
-        <div style={{display:"inline-block",background:"rgba(167,139,250,0.12)",border:"1px solid rgba(167,139,250,0.3)",borderRadius:20,padding:"5px 14px",fontSize:10,color:"#a78bfa",fontFamily:"'Space Mono',monospace",fontWeight:700,letterSpacing:1,marginBottom:18}}>
+        <div style={{display:"inline-block",background:"linear-gradient(135deg,rgba(167,139,250,0.2),rgba(124,58,237,0.15))",border:"1px solid rgba(167,139,250,0.4)",borderRadius:20,padding:"5px 16px",fontSize:10,color:"#c4b5fd",fontFamily:"'Space Mono',monospace",fontWeight:700,letterSpacing:1.5,marginBottom:18,boxShadow:"0 0 20px rgba(167,139,250,0.15)"}}>
           🚀 NOW IN EARLY ACCESS
         </div>
-        <h1 style={{margin:"0 0 14px",fontSize:"clamp(36px,7vw,64px)",fontFamily:"'Bitter',serif",fontWeight:900,color:"white",letterSpacing:-2,lineHeight:1.05}}>
+        <h1 style={{margin:"0 0 14px",fontSize:"clamp(36px,7vw,64px)",fontFamily:"'Bitter',serif",fontWeight:900,color:"white",letterSpacing:-2,lineHeight:1.05,textShadow:"0 0 60px rgba(167,139,250,0.5), 0 0 120px rgba(124,58,237,0.25)"}}>
           Worth My Time?
         </h1>
         <p style={{color:"rgba(255,255,255,0.5)",fontSize:"clamp(13px,2vw,16px)",fontFamily:"'Lora',serif",fontStyle:"italic",margin:"0 auto 32px",maxWidth:480,lineHeight:1.7}}>
@@ -1282,7 +1288,7 @@ function AuthScreen({ onLogin }) {
             ["🎮","500,000+ Games","The full database, scored and filtered for time-pressed players"],
             ["💰","One-Time Payment",`No subscriptions — pay ${PRICE} once, keep access forever`],
           ].map(([icon,title,desc])=>(
-            <div key={title} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:16,padding:"16px 18px",maxWidth:200,textAlign:"left",flex:"1 0 160px"}}>
+            <div key={title} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:16,padding:"16px 18px",maxWidth:200,textAlign:"left",flex:"1 0 160px",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.07)"}}>
               <div style={{fontSize:22,marginBottom:8}}>{icon}</div>
               <div style={{fontSize:12,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace",marginBottom:4,lineHeight:1.3}}>{title}</div>
               <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",lineHeight:1.6}}>{desc}</div>
@@ -1316,7 +1322,7 @@ function AuthScreen({ onLogin }) {
           <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace"}}>Full access free for 3 days · Then just {PRICE} one-time</div>
         </div>
 
-        <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.09)",borderRadius:20,padding:26}}>
+        <div style={{background:"rgba(255,255,255,0.045)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:20,padding:26,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.1), 0 20px 60px rgba(0,0,0,0.5)"}}>
 
           {mode !== "forgot" && (
             <div style={{display:"flex",background:"rgba(0,0,0,0.4)",borderRadius:11,padding:3,marginBottom:22,gap:3}}>
@@ -3317,11 +3323,12 @@ export default function App() {
   };
 
   if (!appReady) return <div style={{minHeight:"100vh",background:"#07070f",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",fontSize:12}}>Loading...</div></div>;
-  if (!user) return <><style>{`*{box-sizing:border-box}body{margin:0}input{color-scheme:dark}input::placeholder{color:rgba(255,255,255,0.22)}input:focus{outline:none;border-color:rgba(167,139,250,0.4)!important}`}</style><AuthScreen onLogin={handleLogin}/></>;
+  if (!user) return <><style>{`*{box-sizing:border-box}body{margin:0}input{color-scheme:dark}input::placeholder{color:rgba(255,255,255,0.22)}input:focus{outline:none;border-color:rgba(167,139,250,0.6)!important;box-shadow:0 0 0 3px rgba(167,139,250,0.12)!important}::selection{background:rgba(167,139,250,0.35);color:white}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#07070f}::-webkit-scrollbar-thumb{background:rgba(167,139,250,0.35);border-radius:4px}`}</style><AuthScreen onLogin={handleLogin}/></>;
+
 
   return (
     <>
-      <style>{`*{box-sizing:border-box}body{margin:0}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#0d0d18}::-webkit-scrollbar-thumb{background:#2a2a3e;border-radius:3px}input::placeholder{color:rgba(255,255,255,0.25)}input:focus{outline:none;border-color:rgba(255,255,255,0.25)!important}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}.card-anim{animation:fadeIn .4s ease forwards;opacity:0}`}</style>
+      <style>{`*{box-sizing:border-box}body{margin:0}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#0d0d18}::-webkit-scrollbar-thumb{background:rgba(167,139,250,0.35);border-radius:4px}::-webkit-scrollbar-thumb:hover{background:rgba(167,139,250,0.6)}::selection{background:rgba(167,139,250,0.35);color:white}input::placeholder{color:rgba(255,255,255,0.25)}input:focus{outline:none;border-color:rgba(167,139,250,0.6)!important;box-shadow:0 0 0 3px rgba(167,139,250,0.12)!important}textarea:focus{outline:none;border-color:rgba(167,139,250,0.6)!important;box-shadow:0 0 0 3px rgba(167,139,250,0.12)!important}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}@keyframes fadeIn{from{opacity:0;transform:translateY(12px) scale(0.97)}to{opacity:1;transform:translateY(0) scale(1)}}.card-anim{animation:fadeIn .38s cubic-bezier(.22,1,.36,1) forwards;opacity:0}`}</style>
 
       <div style={{minHeight:"100vh",background:darkMode?"#080810":"#f4f4f8",backgroundImage:darkMode?"radial-gradient(ellipse at 15% 15%,#1a0a2e 0%,transparent 45%),radial-gradient(ellipse at 85% 85%,#0a1628 0%,transparent 45%)":"radial-gradient(ellipse at 15% 15%,#e0d7ff 0%,transparent 45%),radial-gradient(ellipse at 85% 85%,#d7e8ff 0%,transparent 45%)",transition:"background .3s,color .3s"}}>
 
