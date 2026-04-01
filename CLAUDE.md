@@ -28,6 +28,13 @@
 | `public/index.html` | PWA meta tags, service worker registration, OG tags |
 | `public/manifest.json` | PWA manifest for installable app / Play Store TWA |
 | `public/sw.js` | Service worker — shell caching, offline fallback |
+| `public/icon-192.png` | 192px PWA icon |
+| `public/icon-512.png` | 512px PWA icon (also used as og:image) |
+| `public/apple-touch-icon.png` | 180px Apple touch icon |
+| `public/favicon-32.png` | 32px favicon |
+| `public/robots.txt` | SEO crawler config |
+| `public/sitemap.xml` | Sitemap for Google |
+| `public/.well-known/assetlinks.json` | Play Store TWA placeholder (needs real SHA-256) |
 | `api/verify-payment.js` | POST endpoint — checks Stripe for payment by email, updates Supabase |
 | `api/stripe-webhook.js` | Stripe webhook handler — marks users paid on `checkout.session.completed` |
 | `api/send-code.js` | Email verification code sender |
@@ -37,15 +44,17 @@
 | `api/steam.js` | Steam data proxy |
 | `vercel.json` | SPA rewrites — all non-API routes → index.html |
 
-### Environment Variables (Vercel)
+### Environment Variables (Vercel) — ALL CONFIGURED ✅
 - `STRIPE_SECRET_KEY` — Stripe secret key for verify-payment
-- `STRIPE_WEBHOOK_SECRET` — Stripe webhook signing secret (⚠️ needs to be registered in Stripe Dashboard)
+- `STRIPE_WEBHOOK_SECRET` — `whsec_Uw7DZxyNFhxnP3C6FQNa5qhU...` (set Mar 28)
 - `SUPABASE_URL` — `https://bibpoybwclvifqmouxsf.supabase.co`
-- `SUPABASE_SERVICE_KEY` — Supabase service role key (for server-side writes)
+- `SUPABASE_SERVICE_KEY` — Supabase service role key
+- `ITAD_KEY` — IsThereAnyDeal API key
+- `APP_ORIGIN` — App origin for CORS
 
 ### Constants in App.js
 - `RAWG_KEY` — line 7
-- `RAWG_BASE` — line 8
+- `RAWG_BASE` — line 8: `https://api.rawg.io/api`
 - `PRICE` — "$7.99" (line 10)
 - `STRIPE_PK` — Stripe publishable key (line 11)
 - `STRIPE_PAYMENT_LINK` — Stripe hosted checkout link (line 12)
@@ -99,45 +108,47 @@ create table profiles (
 
 ## Feature Map
 
-### Core Features (✅ Complete)
+### Core Features (✅ Complete & Live)
 - **Game Search & Discovery** — search 500k+ games, filter by genre/platform/era/difficulty/time/score
 - **Time/Adventure/Worth It Scores** — computed from RAWG data + HLTB estimates
 - **Game Modal** — detailed view with Metacritic, OpenCritic, Steam Deck, price comparison
-- **Surprise Me** — random high-rated game discovery
+- **Surprise Me** — random high-rated game discovery (E/E10+ only in Kids Mode)
 - **Reviews** — star ratings + text reviews, stored in Supabase
 - **User Profiles** — gamer tag, bio, status, custom avatar/banner, achievements
-- **Showcase** — pin up to 6 favorite games to your profile (Edit Profile → 📌 Showcase tab)
-- **Backlog** — "📚 + Backlog" button on every game card, saves to profile, visible in Backlog tab
+- **Showcase** — pin up to 6 favorite games (Edit Profile → 📌 Showcase tab), displays with art grid on profile
+- **Backlog** — "📚 + Backlog" button on every game card, toggles on/off, saved to Supabase, visible in Backlog tab with art thumbnails + remove button
 - **Social** — follow/unfollow users, follower counts, community feed
-- **Share Profile** — copy profile link with clipboard fallback
+- **Share Profile** — copy profile link, shows "✓ Copied!" for 2s, clipboard fallback
 - **Achievements** — auto-earned badges (First Review, Critic, Curator, Collector, etc.)
 - **Dark/Light Mode** — toggle in UI
+- **Age Gate** — 18+ confirmation modal before showing adult content
 
-### Parental Controls (✅ Complete)
+### Parental Controls (✅ Complete & Live)
 - **Kids Mode** — toggle in Edit Profile → 🔒 Controls tab
-- **PIN Protected** — 4-digit PIN (SHA-256 hashed with salt, stored in localStorage)
+- **PIN Protected** — 4-digit PIN (SHA-256 hashed with salt `wmt-salt-2026`, stored in localStorage)
 - **ESRB Filtering** — Kids Mode restricts ALL browsing to E (Everyone) and E10+ only
   - API param: `esrb_ratings=1,2`
   - Client-side double-check: `g.esrb_rating?.id > 2` blocked
   - Blocked genres: adult, eroge, hentai, pinup, nude
   - Blocked title words list for extra safety
-- **Parent Filter Buttons** — quick-access kid-friendly category buttons (Adventure, Sports, Puzzle, etc.)
-- **Surprise Me** — restricted to E/E10+ when Kids Mode is on
+- **Parent Filter Buttons** — quick-access kid-friendly category buttons
+- **Surprise Me** — restricted to E/E10+ when Kids Mode is on (API + client-side)
 - **Pagination** — ESRB enforcement preserved on page 2+ via `activeParentFilter` state
 
-### Payments (✅ Complete)
+### Payments (✅ Complete & Live)
 - **3-day free trial** — auto-starts on signup
 - **One-time $7.99** — Stripe Checkout (hosted link)
 - **Payment Verification** — `/api/verify-payment` checks Stripe API directly as fallback
-- **Stripe Webhook** — `/api/stripe-webhook.js` (⚠️ needs webhook registered in Stripe Dashboard)
+- **Stripe Webhook** — `captivating-splendor` endpoint active at `https://worthmytime.info/api/stripe-webhook`, listens for `checkout.session.completed`, `STRIPE_WEBHOOK_SECRET` set in Vercel ✅
 
-### PWA Setup (🔧 In Progress — uncommitted)
+### PWA (✅ Complete & Live)
 - `manifest.json` — name, icons, display:standalone, categories
 - `sw.js` — service worker with shell caching, network-first for API calls
-- App icons — 32px, 180px (apple-touch), 192px, 512px PNGs
-- `index.html` — updated with manifest link, apple-mobile tags, SW registration, og:image
-- `robots.txt` + `sitemap.xml` — basic SEO
-- `.well-known/assetlinks.json` — placeholder for Play Store TWA
+- Icons — 32px favicon, 180px apple-touch, 192px, 512px PNGs
+- `index.html` — manifest link, apple-mobile tags, SW registration, og:image/twitter:image
+- `robots.txt` + `sitemap.xml` — SEO
+- `.well-known/assetlinks.json` — placeholder for Play Store TWA (needs real SHA-256)
+- App is now **installable** on Android/iOS from browser
 
 ---
 
@@ -168,7 +179,7 @@ create table profiles (
 - `EditProfileModal` — tabs: Identity, Appearance, Status, Showcase, Controls
 - `UserProfilePage` — full profile view with Activity/Showcase/Backlog tabs
 - `GameModal` — detailed game view with scores, reviews, prices
-- `GameCard` — grid card with scores, HLTB, backlog button
+- `GameCard` — grid card with scores, HLTB, backlog button (props: `currentUser`, `inBacklog`, `onToggleBacklog`)
 
 ### ESRB Rating IDs (RAWG)
 - 1 = Everyone
@@ -179,53 +190,27 @@ create table profiles (
 
 ---
 
-## Uncommitted Work (as of 2026-03-31)
+## Launch Status
 
-The following files are staged/ready but **NOT yet committed or pushed**:
+### Web Launch — READY ✅
+| Task | Status |
+|---|---|
+| Core features | ✅ Live |
+| Payments (Stripe + webhook) | ✅ Live |
+| PWA (manifest, SW, icons) | ✅ Live |
+| og:image / social sharing | ✅ Live |
+| sitemap.xml + robots.txt | ✅ Live |
+| DMARC | ✅ Updated to `p=quarantine` |
+| Stripe webhook registered | ✅ Active (`captivating-splendor`) |
+| STRIPE_WEBHOOK_SECRET in Vercel | ✅ Set |
 
-### New Files
-- `public/manifest.json` — PWA manifest
-- `public/sw.js` — Service worker
-- `public/icon-192.png`, `public/icon-512.png` — App icons
-- `public/apple-touch-icon.png`, `public/favicon-32.png` — Favicon + Apple icon
-- `public/robots.txt` — SEO crawler config
-- `public/sitemap.xml` — Sitemap for Google
-- `public/.well-known/assetlinks.json` — Play Store TWA placeholder
-- `icon-192.svg`, `icon-512.svg` — Source SVGs (can be deleted after PNG generation)
-
-### Modified Files
-- `public/index.html` — Added manifest link, apple-mobile tags, SW registration, og:image/twitter:image
-- `package.json` / `package-lock.json` — Added `sharp` as devDependency (for icon generation)
-
-### To commit & push
-```bash
-git add public/manifest.json public/sw.js public/icon-192.png public/icon-512.png public/apple-touch-icon.png public/favicon-32.png public/robots.txt public/sitemap.xml public/.well-known/assetlinks.json public/index.html
-git commit -m "Add PWA manifest, service worker, icons, SEO, and og:image"
-git push -u origin claude/review-website-l5rSR
-```
-Then merge PR on GitHub to deploy.
-
----
-
-## Remaining Launch Tasks
-
-### Must Do Before Launch
-| Task | Status | Owner |
-|---|---|---|
-| Commit & push PWA files | ❌ Ready to push | Dev |
-| Merge PR to main | ❌ After push | User (GitHub) |
-| Register Stripe webhook endpoint | ❌ | User (Stripe Dashboard → add `https://worthmytime.info/api/stripe-webhook`, listen for `checkout.session.completed`, copy signing secret to Vercel env as `STRIPE_WEBHOOK_SECRET`) |
-| DMARC DNS update | ❌ | User (change `p=none` to `p=quarantine`) |
-| Test all payment flows end-to-end | ❌ | User |
-| Test Kids Mode thoroughly | ❌ | User |
-
-### Google Play Store
+### Google Play Store — In Progress 🔧
 | Task | Status | Notes |
 |---|---|---|
-| PWA manifest + SW | 🔧 Built, needs push | Required for TWA |
-| Google Play Developer Account | 🔧 User working on it | $25 one-time |
-| Bubblewrap CLI to generate APK | ❌ | `npx @nicolo-ribaudo/bubblewrap init --manifest=https://worthmytime.info/manifest.json` |
-| Update assetlinks.json with real SHA-256 | ❌ | From Bubblewrap keystore |
+| PWA manifest + SW | ✅ Live | Required for TWA |
+| Google Play Developer Account | 🔧 User working on it | $25 one-time, expected tomorrow |
+| Bubblewrap CLI to generate APK | ❌ Waiting on dev account | `npx @nicolo-ribaudo/bubblewrap init --manifest=https://worthmytime.info/manifest.json` |
+| Update assetlinks.json with real SHA-256 | ❌ After Bubblewrap | Replace placeholder in `public/.well-known/assetlinks.json` |
 | Play Store listing | ❌ | Screenshots, description, privacy policy URL |
 | Submit for review | ❌ | 3-7 day review for new accounts |
 
@@ -233,10 +218,9 @@ Then merge PR on GitHub to deploy.
 | Task | Notes |
 |---|---|
 | Custom og:image (designed banner) | Currently using icon-512.png as placeholder |
-| Stripe webhook for instant payment confirmation | Currently relies on manual verify-payment polling |
 | Email notifications | New follower, review reply |
 | PWA update prompt | Notify users when new version available |
-| Better app icon (professional design) | Current one is programmatically generated |
+| Better app icon (professional design) | Current one is programmatically generated from SVG |
 
 ---
 
@@ -246,8 +230,9 @@ Then merge PR on GitHub to deploy.
 - Push to feature branch → Create PR on GitHub → Merge → Vercel auto-deploys
 - GitHub PAT tokens: user generates fresh ones as needed (they expire quickly)
 - Remote URL format: `https://x-access-token:<TOKEN>@github.com/mercymerc713/worth-my-time.git`
+- There is also a `github-direct` remote that bypasses the proxy for direct pushes
 
 ## Domain & Email
 - **Domain:** worthmytime.info
 - **Support email:** support@worthmytime.info
-- **DMARC:** currently `p=none`, should update to `p=quarantine`
+- **DMARC:** `p=quarantine` ✅ (updated 2026-04-01)
