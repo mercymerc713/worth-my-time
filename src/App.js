@@ -522,6 +522,137 @@ async function unfollowUser(followerEmail, followingEmail) {
   } catch { return false; }
 }
 
+// ─── Friend Requests ─────────────────────────────────────────────────────────
+// SQL to run in Supabase:
+// create table friend_requests (
+//   id uuid default gen_random_uuid() primary key,
+//   from_email text not null,
+//   to_email text not null,
+//   status text default 'pending',
+//   created_at timestamp with time zone default now(),
+//   unique(from_email, to_email)
+// );
+// alter table friend_requests enable row level security;
+// create policy "Anyone can read friend_requests" on friend_requests for select to anon using (true);
+// create policy "Anyone can insert friend_requests" on friend_requests for insert to anon with check (true);
+// create policy "Anyone can update friend_requests" on friend_requests for update to anon using (true);
+// create policy "Anyone can delete friend_requests" on friend_requests for delete to anon using (true);
+
+async function sendFriendRequest(fromEmail, toEmail) {
+  try {
+    await sbFetch("/friend_requests", {
+      method: "POST",
+      headers: { "Prefer": "resolution=merge-duplicates" },
+      body: JSON.stringify({ from_email: fromEmail, to_email: toEmail, status: "pending" }),
+    });
+    return true;
+  } catch { return false; }
+}
+
+async function getFriendRequestStatus(fromEmail, toEmail) {
+  try {
+    const data = await sbFetch(`/friend_requests?or=(and(from_email.eq.${encodeURIComponent(fromEmail)},to_email.eq.${encodeURIComponent(toEmail)}),and(from_email.eq.${encodeURIComponent(toEmail)},to_email.eq.${encodeURIComponent(fromEmail)}))`);
+    return data?.[0] || null;
+  } catch { return null; }
+}
+
+async function acceptFriendRequest(fromEmail, toEmail) {
+  try {
+    await sbFetch(`/friend_requests?from_email=eq.${encodeURIComponent(fromEmail)}&to_email=eq.${encodeURIComponent(toEmail)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "accepted" }),
+    });
+    // Create mutual follows
+    await Promise.all([
+      followUser(fromEmail, toEmail),
+      followUser(toEmail, fromEmail),
+    ]);
+    return true;
+  } catch { return false; }
+}
+
+async function removeFriend(emailA, emailB) {
+  try {
+    await sbFetch(`/friend_requests?or=(and(from_email.eq.${encodeURIComponent(emailA)},to_email.eq.${encodeURIComponent(emailB)}),and(from_email.eq.${encodeURIComponent(emailB)},to_email.eq.${encodeURIComponent(emailA)}))`, {
+      method: "DELETE",
+    });
+    await Promise.all([
+      unfollowUser(emailA, emailB),
+      unfollowUser(emailB, emailA),
+    ]);
+    return true;
+  } catch { return false; }
+}
+
+async function getPendingFriendRequests(email) {
+  try {
+    const data = await sbFetch(`/friend_requests?to_email=eq.${encodeURIComponent(email)}&status=eq.pending`);
+    return data || [];
+  } catch { return []; }
+}
+
+// ─── Messaging ───────────────────────────────────────────────────────────────
+// SQL to run in Supabase:
+// create table messages (
+//   id uuid default gen_random_uuid() primary key,
+//   from_email text not null,
+//   to_email text not null,
+//   content text not null,
+//   read boolean default false,
+//   created_at timestamp with time zone default now()
+// );
+// alter table messages enable row level security;
+// create policy "Anyone can read messages" on messages for select to anon using (true);
+// create policy "Anyone can insert messages" on messages for insert to anon with check (true);
+// create policy "Anyone can update messages" on messages for update to anon using (true);
+
+async function sendMessage(fromEmail, toEmail, content) {
+  try {
+    await sbFetch("/messages", {
+      method: "POST",
+      body: JSON.stringify({ from_email: fromEmail, to_email: toEmail, content: content.trim() }),
+    });
+    return true;
+  } catch { return false; }
+}
+
+async function getConversation(emailA, emailB) {
+  try {
+    const data = await sbFetch(`/messages?or=(and(from_email.eq.${encodeURIComponent(emailA)},to_email.eq.${encodeURIComponent(emailB)}),and(from_email.eq.${encodeURIComponent(emailB)},to_email.eq.${encodeURIComponent(emailA)}))&order=created_at.asc&limit=100`);
+    return data || [];
+  } catch { return []; }
+}
+
+async function getInbox(email) {
+  try {
+    const data = await sbFetch(`/messages?or=(from_email.eq.${encodeURIComponent(email)},to_email.eq.${encodeURIComponent(email)})&order=created_at.desc&limit=200`);
+    if (!data?.length) return [];
+    // Group into conversations, keep latest message per thread
+    const threads = {};
+    for (const m of data) {
+      const other = m.from_email === email ? m.to_email : m.from_email;
+      if (!threads[other]) threads[other] = m;
+    }
+    return Object.values(threads);
+  } catch { return []; }
+}
+
+async function markMessagesRead(fromEmail, toEmail) {
+  try {
+    await sbFetch(`/messages?from_email=eq.${encodeURIComponent(fromEmail)}&to_email=eq.${encodeURIComponent(toEmail)}&read=eq.false`, {
+      method: "PATCH",
+      body: JSON.stringify({ read: true }),
+    });
+  } catch { /* non-critical */ }
+}
+
+async function getUnreadCount(email) {
+  try {
+    const data = await sbFetch(`/messages?to_email=eq.${encodeURIComponent(email)}&read=eq.false`);
+    return data?.length || 0;
+  } catch { return 0; }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GAME DATA HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2247,7 +2378,7 @@ function EditProfileModal({ user, onClose, onSave }) {
   );
 }
 
-function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile }) {
+function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile, onOpenMessages }) {
   const [profile, setProfile] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [followers, setFollowers] = useState([]);
@@ -2256,15 +2387,23 @@ function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile }) 
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("activity");
   const [copied, setCopied] = useState(false);
+  const [friendRequest, setFriendRequest] = useState(null); // null | {status, from_email, to_email}
+  const [friendBusy, setFriendBusy] = useState(false);
   const isOwnProfile = currentUser?.email === profileEmail;
 
   useEffect(() => {
-    Promise.all([getProfile(profileEmail), getUserReviews(profileEmail), getFollowers(profileEmail), getFollowing(profileEmail)])
-      .then(([p, r, flrs, flwg]) => {
-        setProfile(p); setReviews(r); setFollowers(flrs); setFollowing(flwg);
-        setIsFollowing(flrs.some(f => f.follower_email === currentUser?.email));
-        setLoading(false);
-      });
+    Promise.all([
+      getProfile(profileEmail),
+      getUserReviews(profileEmail),
+      getFollowers(profileEmail),
+      getFollowing(profileEmail),
+      currentUser && !isOwnProfile ? getFriendRequestStatus(currentUser.email, profileEmail) : Promise.resolve(null),
+    ]).then(([p, r, flrs, flwg, fr]) => {
+      setProfile(p); setReviews(r); setFollowers(flrs); setFollowing(flwg);
+      setIsFollowing(flrs.some(f => f.follower_email === currentUser?.email));
+      setFriendRequest(fr);
+      setLoading(false);
+    });
   }, [profileEmail]);
 
   const handleFollow = async () => {
@@ -2361,10 +2500,44 @@ function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile }) 
                 ✏️ Edit Profile
               </button>
             ) : (
-              <button onClick={handleFollow}
-                style={{background:isFollowing?"rgba(255,255,255,0.07)":"linear-gradient(135deg,#a78bfa,#7c3aed)",border:isFollowing?"1px solid rgba(255,255,255,0.12)":"none",borderRadius:10,padding:"8px 16px",color:"white",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
-                {isFollowing?"✓ Following":"+ Follow"}
-              </button>
+              <>
+                <button onClick={handleFollow}
+                  style={{background:isFollowing?"rgba(255,255,255,0.07)":"linear-gradient(135deg,#a78bfa,#7c3aed)",border:isFollowing?"1px solid rgba(255,255,255,0.12)":"none",borderRadius:10,padding:"8px 16px",color:"white",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace",boxShadow:isFollowing?"none":"0 2px 12px rgba(139,92,246,0.35)"}}>
+                  {isFollowing?"✓ Following":"+ Follow"}
+                </button>
+                <button
+                  disabled={friendBusy}
+                  onClick={async () => {
+                    if (!currentUser || friendBusy) return;
+                    setFriendBusy(true);
+                    if (friendRequest?.status === "accepted") {
+                      await removeFriend(currentUser.email, profileEmail);
+                      setFriendRequest(null);
+                    } else if (friendRequest?.status === "pending" && friendRequest.to_email === currentUser.email) {
+                      await acceptFriendRequest(friendRequest.from_email, currentUser.email);
+                      setFriendRequest(r => ({ ...r, status: "accepted" }));
+                    } else if (!friendRequest) {
+                      await sendFriendRequest(currentUser.email, profileEmail);
+                      setFriendRequest({ from_email: currentUser.email, to_email: profileEmail, status: "pending" });
+                    }
+                    setFriendBusy(false);
+                  }}
+                  style={{
+                    background: friendRequest?.status==="accepted" ? "rgba(74,222,128,0.1)" : friendRequest?.status==="pending" && friendRequest.to_email===currentUser?.email ? "rgba(251,191,36,0.12)" : friendRequest?.status==="pending" ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.06)",
+                    border: `1px solid ${friendRequest?.status==="accepted"?"rgba(74,222,128,0.35)":friendRequest?.status==="pending"&&friendRequest.to_email===currentUser?.email?"rgba(251,191,36,0.4)":"rgba(255,255,255,0.12)"}`,
+                    borderRadius:10,padding:"8px 14px",
+                    color: friendRequest?.status==="accepted"?"#4ade80":friendRequest?.status==="pending"&&friendRequest.to_email===currentUser?.email?"#fbbf24":"rgba(255,255,255,0.6)",
+                    fontSize:11,fontWeight:700,cursor:friendBusy?"not-allowed":"pointer",fontFamily:"'Space Mono',monospace",transition:"all .2s"
+                  }}>
+                  {friendBusy ? "..." : friendRequest?.status==="accepted" ? "✓ Friends" : friendRequest?.status==="pending" && friendRequest.to_email===currentUser?.email ? "✅ Accept Friend Request" : friendRequest?.status==="pending" ? "⏳ Request Sent" : "👥 Add Friend"}
+                </button>
+                <button onClick={()=>onOpenMessages&&onOpenMessages(profileEmail)}
+                  style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"8px 14px",color:"rgba(255,255,255,0.6)",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",transition:"all .2s"}}
+                  onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(167,139,250,0.3)"}
+                  onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.1)"}>
+                  💬 Message
+                </button>
+              </>
             )}
             <button onClick={copyLink}
               style={{background:copied?"rgba(74,222,128,0.12)":"rgba(255,255,255,0.05)",border:`1px solid ${copied?"rgba(74,222,128,0.4)":"rgba(255,255,255,0.1)"}`,borderRadius:10,padding:"8px 14px",color:copied?"#4ade80":"rgba(255,255,255,0.5)",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",transition:"all .2s"}}>
@@ -2501,6 +2674,173 @@ function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile }) 
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MESSAGES MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+function MessagesModal({ currentUser, initialRecipient=null, onClose }) {
+  const [inbox, setInbox] = useState([]);
+  const [activeThread, setActiveThread] = useState(null); // email string
+  const [messages, setMessages] = useState([]);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [loadingInbox, setLoadingInbox] = useState(true);
+  const [loadingThread, setLoadingThread] = useState(false);
+  const [threadProfiles, setThreadProfiles] = useState({});
+  const bottomRef = React.useRef(null);
+
+  useEffect(() => {
+    getInbox(currentUser.email).then(threads => {
+      setInbox(threads);
+      setLoadingInbox(false);
+      // Load profiles for all thread participants
+      const emails = [...new Set(threads.map(m => m.from_email === currentUser.email ? m.to_email : m.from_email))];
+      Promise.all(emails.map(e => getProfile(e))).then(profiles => {
+        const map = {};
+        emails.forEach((e, i) => { if (profiles[i]) map[e] = profiles[i]; });
+        setThreadProfiles(map);
+      });
+    });
+    if (initialRecipient) openThread(initialRecipient);
+  }, []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const openThread = async (email) => {
+    setActiveThread(email);
+    setLoadingThread(true);
+    const [msgs, profile] = await Promise.all([
+      getConversation(currentUser.email, email),
+      getProfile(email),
+    ]);
+    setMessages(msgs);
+    if (profile) setThreadProfiles(p => ({ ...p, [email]: profile }));
+    setLoadingThread(false);
+    markMessagesRead(email, currentUser.email);
+  };
+
+  const handleSend = async () => {
+    if (!draft.trim() || !activeThread || sending) return;
+    setSending(true);
+    const ok = await sendMessage(currentUser.email, activeThread, draft.trim());
+    if (ok) {
+      setMessages(m => [...m, { from_email: currentUser.email, to_email: activeThread, content: draft.trim(), created_at: new Date().toISOString() }]);
+      setDraft("");
+    }
+    setSending(false);
+  };
+
+  const getDisplayName = (email) => {
+    const p = threadProfiles[email];
+    return p?.gamer_tag || email.split("@")[0];
+  };
+
+  const getAvatar = (email) => {
+    const p = threadProfiles[email];
+    if (p?.avatar_url) return <img src={p.avatar_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>;
+    return p?.avatar_emoji || "🎮";
+  };
+
+  const getAvatarColor = (email) => threadProfiles[email]?.avatar_color || "#a78bfa";
+
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(16px)"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0d0d18",border:"1px solid rgba(167,139,250,0.25)",borderRadius:24,width:"100%",maxWidth:680,height:"85vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 0 80px rgba(167,139,250,0.15)"}}>
+
+        {/* Header */}
+        <div style={{padding:"16px 20px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            {activeThread && (
+              <button onClick={()=>{ setActiveThread(null); setMessages([]); }} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"5px 10px",color:"rgba(255,255,255,0.5)",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>← Back</button>
+            )}
+            <h3 style={{margin:0,fontSize:15,fontFamily:"'Bitter',serif",color:"white",fontWeight:700}}>
+              {activeThread ? `💬 ${getDisplayName(activeThread)}` : "💬 Messages"}
+            </h3>
+          </div>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"5px 12px",color:"rgba(255,255,255,0.5)",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>✕ Close</button>
+        </div>
+
+        {/* Body */}
+        <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+          {!activeThread ? (
+            // Inbox
+            <div style={{flex:1,overflowY:"auto",padding:12}}>
+              {loadingInbox ? (
+                <div style={{textAlign:"center",padding:40,color:"rgba(255,255,255,0.3)",fontSize:11,fontFamily:"'Space Mono',monospace"}}>Loading...</div>
+              ) : inbox.length === 0 ? (
+                <div style={{textAlign:"center",padding:40}}>
+                  <div style={{fontSize:32,marginBottom:12}}>💬</div>
+                  <div style={{color:"rgba(255,255,255,0.3)",fontSize:11,fontFamily:"'Space Mono',monospace",lineHeight:1.8}}>No messages yet.<br/>Visit a player's profile and hit "Message" to start a conversation.</div>
+                </div>
+              ) : (
+                inbox.map((m, i) => {
+                  const other = m.from_email === currentUser.email ? m.to_email : m.from_email;
+                  const unread = !m.read && m.to_email === currentUser.email;
+                  const ac = getAvatarColor(other);
+                  return (
+                    <div key={i} onClick={()=>openThread(other)}
+                      style={{display:"flex",alignItems:"center",gap:12,padding:"12px",borderRadius:14,cursor:"pointer",background:unread?"rgba(167,139,250,0.06)":"transparent",border:`1px solid ${unread?"rgba(167,139,250,0.2)":"rgba(255,255,255,0.05)"}`,marginBottom:6,transition:"all .2s"}}
+                      onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.04)"}
+                      onMouseLeave={e=>e.currentTarget.style.background=unread?"rgba(167,139,250,0.06)":"transparent"}>
+                      <div style={{width:40,height:40,borderRadius:"50%",background:ac,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0,overflow:"hidden"}}>{getAvatar(other)}</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:12,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace",marginBottom:2}}>{getDisplayName(other)}</div>
+                        <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",fontFamily:"'Space Mono',monospace",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{m.content}</div>
+                      </div>
+                      {unread && <div style={{width:8,height:8,borderRadius:"50%",background:"#a78bfa",flexShrink:0}}/>}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          ) : (
+            // Conversation
+            <>
+              <div style={{flex:1,overflowY:"auto",padding:"12px 16px",display:"flex",flexDirection:"column",gap:8}}>
+                {loadingThread ? (
+                  <div style={{textAlign:"center",padding:40,color:"rgba(255,255,255,0.3)",fontSize:11,fontFamily:"'Space Mono',monospace"}}>Loading...</div>
+                ) : messages.length === 0 ? (
+                  <div style={{textAlign:"center",padding:40,color:"rgba(255,255,255,0.3)",fontSize:11,fontFamily:"'Space Mono',monospace"}}>No messages yet. Say hello!</div>
+                ) : (
+                  messages.map((m, i) => {
+                    const isMe = m.from_email === currentUser.email;
+                    return (
+                      <div key={i} style={{display:"flex",justifyContent:isMe?"flex-end":"flex-start"}}>
+                        <div style={{maxWidth:"72%",background:isMe?"linear-gradient(135deg,#a78bfa,#7c3aed)":"rgba(255,255,255,0.07)",borderRadius:isMe?"18px 18px 4px 18px":"18px 18px 18px 4px",padding:"10px 14px",boxShadow:isMe?"0 2px 12px rgba(139,92,246,0.3)":"none"}}>
+                          <div style={{fontSize:13,color:"white",fontFamily:"'Space Mono',monospace",lineHeight:1.6,wordBreak:"break-word"}}>{m.content}</div>
+                          <div style={{fontSize:9,color:isMe?"rgba(255,255,255,0.5)":"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace",marginTop:4,textAlign:isMe?"right":"left"}}>
+                            {new Date(m.created_at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                <div ref={bottomRef}/>
+              </div>
+              {/* Input */}
+              <div style={{padding:"12px 16px",borderTop:"1px solid rgba(255,255,255,0.07)",display:"flex",gap:10,flexShrink:0}}>
+                <input
+                  value={draft}
+                  onChange={e=>setDraft(e.target.value)}
+                  onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); handleSend(); }}}
+                  placeholder="Write a message..."
+                  style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:"10px 14px",color:"white",fontSize:12,fontFamily:"'Space Mono',monospace"}}
+                />
+                <button onClick={handleSend} disabled={!draft.trim()||sending}
+                  style={{background:"linear-gradient(135deg,#a78bfa,#7c3aed)",border:"none",borderRadius:12,padding:"10px 16px",color:"white",fontWeight:700,fontSize:12,cursor:draft.trim()&&!sending?"pointer":"not-allowed",fontFamily:"'Space Mono',monospace",opacity:draft.trim()&&!sending?1:0.5,boxShadow:"0 2px 12px rgba(139,92,246,0.3)"}}>
+                  {sending?"...":"Send"}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const DECK_BADGE = {
   platinum: { label:"Platinum", color:"#e2e8f0", bg:"rgba(226,232,240,0.15)", icon:"🏅" },
   gold:     { label:"Gold",     color:"#fbbf24", bg:"rgba(251,191,36,0.15)",  icon:"🥇" },
@@ -2513,7 +2853,7 @@ const DECK_BADGE = {
 
 const OC_TIER_COLOR = { Mighty:"#4ade80", Strong:"#86efac", Fair:"#fbbf24", Weak:"#f87171" };
 
-function GameModal({ game, onClose, currentUser }) {
+function GameModal({ game, onClose, currentUser, darkMode=true }) {
   const [deckBadge, setDeckBadge] = useState(null);
   const [steamPrice, setSteamPrice] = useState(null);
   const [ocData, setOcData] = useState(null);
@@ -2569,23 +2909,28 @@ function GameModal({ game, onClose, currentUser }) {
     stores = [];
   }
   const badge = deckBadge ? DECK_BADGE[deckBadge] : null;
+  const mbg = darkMode ? "#0d0d18" : "#ffffff";
+  const mtext = darkMode ? "white" : "#0f0f1a";
+  const msubtle = darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.45)";
+  const mcard = darkMode ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)";
+  const mborder = darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.08)";
   return (
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(12px)"}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:"#0d0d18",border:`1px solid ${color}50`,borderRadius:24,width:"100%",maxWidth:500,maxHeight:"90vh",overflowY:"auto",boxShadow:`0 0 100px ${color}25`,position:"relative"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:mbg,border:`1px solid ${color}50`,borderRadius:24,width:"100%",maxWidth:500,maxHeight:"90vh",overflowY:"auto",boxShadow:`0 0 100px ${color}25`,position:"relative"}}>
         {game.background_image && (
           <div style={{height:180,overflow:"hidden",borderRadius:"24px 24px 0 0",position:"relative"}}>
             <img src={game.background_image} alt={game.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-            <div style={{position:"absolute",inset:0,background:`linear-gradient(to top,#0d0d18,transparent 50%)`}}/>
+            <div style={{position:"absolute",inset:0,background:`linear-gradient(to top,${mbg},transparent 50%)`}}/>
           </div>
         )}
         <div style={{padding:20}}>
-          <button onClick={onClose} style={{position:"absolute",top:14,right:14,background:"rgba(0,0,0,0.6)",border:"1px solid rgba(255,255,255,0.15)",color:"white",borderRadius:10,width:32,height:32,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+          <button onClick={onClose} style={{position:"absolute",top:14,right:14,background:"rgba(0,0,0,0.5)",border:"1px solid rgba(255,255,255,0.15)",color:"white",borderRadius:10,width:32,height:32,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
           <div style={{fontSize:9,color,fontFamily:"'Space Mono',monospace",letterSpacing:1.5,marginBottom:4}}>{(game.genres||[]).map(g=>g.name).join(" · ")}</div>
-          <h2 style={{margin:"0 0 10px",fontSize:22,fontFamily:"'Bitter',serif",color:"white",lineHeight:1.2}}>{game.name}</h2>
-          <div style={{display:"flex",justifyContent:"space-around",marginBottom:18,padding:12,background:"rgba(255,255,255,0.03)",borderRadius:14,border:"1px solid rgba(255,255,255,0.06)"}}>
-            <ScoreRing value={scores.t} label="Time"      color={color} size={68}/>
-            <ScoreRing value={scores.a} label="Adventure" color={color} size={68}/>
-            <ScoreRing value={scores.w} label="Worth It"  color={color} size={68}/>
+          <h2 style={{margin:"0 0 10px",fontSize:22,fontFamily:"'Bitter',serif",color:mtext,lineHeight:1.2}}>{game.name}</h2>
+          <div style={{display:"flex",justifyContent:"space-around",marginBottom:18,padding:12,background:mcard,borderRadius:14,border:`1px solid ${mborder}`}}>
+            <ScoreRing value={scores.t} label="Time"      color={color} size={68} darkMode={darkMode}/>
+            <ScoreRing value={scores.a} label="Adventure" color={color} size={68} darkMode={darkMode}/>
+            <ScoreRing value={scores.w} label="Worth It"  color={color} size={68} darkMode={darkMode}/>
           </div>
           {/* Steam Deck Badge */}
           {badge && (
@@ -2617,9 +2962,9 @@ function GameModal({ game, onClose, currentUser }) {
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
             {[["⏱ Session",scores.hltb.session],["📖 Story",scores.hltb.main],["🏆 100%",scores.hltb.complete],["🎯 Difficulty",scores.difficulty],["⭐ Rating",game.rating?`${game.rating.toFixed(1)}/5`:"Unrated"],["📊 Metacritic",game.metacritic||"No score"],["🔞 Age Rating", scores.esrb==="Not Rated"?"Unrated":scores.esrb==="Everyone"?"E — Everyone":scores.esrb==="Everyone 10+"?"E10+ — Everyone 10+":scores.esrb==="Teen"?"T — Teen (13+)":scores.esrb==="Mature"?"M — Mature (17+)":scores.esrb==="Adults Only"?"AO — Adults Only (18+)":scores.esrb==="Rating Pending"?"Rating Pending":scores.esrb],["📅 Released",game.released?new Date(game.released).toLocaleDateString("en-US",{year:"numeric",month:"short"}):"Unknown"],
             ].map(([k,v])=>(
-              <div key={k} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"9px 12px"}}>
-                <div style={{fontSize:9,color:"rgba(255,255,255,0.28)",fontFamily:"'Space Mono',monospace",marginBottom:3}}>{k}</div>
-                <div style={{fontSize:12,color:"white",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{v}</div>
+              <div key={k} style={{background:mcard,borderRadius:10,padding:"9px 12px"}}>
+                <div style={{fontSize:9,color:msubtle,fontFamily:"'Space Mono',monospace",marginBottom:3}}>{k}</div>
+                <div style={{fontSize:12,color:mtext,fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{v}</div>
               </div>
             ))}
           </div>
@@ -2967,6 +3312,9 @@ export default function App() {
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [viewProfile, setViewProfile] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
+  const [showMessages, setShowMessages] = useState(false);
+  const [messagesRecipient, setMessagesRecipient] = useState(null);
+  const [unreadMessages, setUnreadMessages] = useState(0);
   const [showFAQ, setShowFAQ] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
@@ -3008,6 +3356,7 @@ export default function App() {
         await store.set("wmt_user", user);
         setUser(user);
         getProfile(user.email).then(p => setUserProfile(p));
+        getUnreadCount(user.email).then(n => setUnreadMessages(n));
       }
       setAppReady(true);
     });
@@ -3330,7 +3679,7 @@ export default function App() {
     <>
       <style>{`*{box-sizing:border-box}body{margin:0}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#0d0d18}::-webkit-scrollbar-thumb{background:rgba(167,139,250,0.35);border-radius:4px}::-webkit-scrollbar-thumb:hover{background:rgba(167,139,250,0.6)}::selection{background:rgba(167,139,250,0.35);color:white}input::placeholder{color:rgba(255,255,255,0.25)}input:focus{outline:none;border-color:rgba(167,139,250,0.6)!important;box-shadow:0 0 0 3px rgba(167,139,250,0.12)!important}textarea:focus{outline:none;border-color:rgba(167,139,250,0.6)!important;box-shadow:0 0 0 3px rgba(167,139,250,0.12)!important}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}@keyframes fadeIn{from{opacity:0;transform:translateY(12px) scale(0.97)}to{opacity:1;transform:translateY(0) scale(1)}}.card-anim{animation:fadeIn .38s cubic-bezier(.22,1,.36,1) forwards;opacity:0}`}</style>
 
-      <div style={{minHeight:"100vh",background:darkMode?"#080810":"#f4f4f8",backgroundImage:darkMode?"radial-gradient(ellipse at 15% 15%,#1a0a2e 0%,transparent 45%),radial-gradient(ellipse at 85% 85%,#0a1628 0%,transparent 45%)":"radial-gradient(ellipse at 15% 15%,#e0d7ff 0%,transparent 45%),radial-gradient(ellipse at 85% 85%,#d7e8ff 0%,transparent 45%)",transition:"background .3s,color .3s"}}>
+      <div style={{minHeight:"100vh",background:darkMode?"#111118":"#f4f4f8",backgroundImage:darkMode?"radial-gradient(ellipse at 15% 15%,#1e0d35 0%,transparent 45%),radial-gradient(ellipse at 85% 85%,#0c1a30 0%,transparent 45%)":"radial-gradient(ellipse at 15% 15%,#e0d7ff 0%,transparent 45%),radial-gradient(ellipse at 85% 85%,#d7e8ff 0%,transparent 45%)",transition:"background .3s,color .3s"}}>
 
         {/* Status Bar */}
         <StatusBar user={user} onUpgrade={()=>setShowPaywall(true)} onLogout={handleLogout}/>
@@ -3363,6 +3712,16 @@ export default function App() {
                   <span>{icon}</span>{label}
                 </button>
               ))}
+              <button onClick={()=>{ setMessagesRecipient(null); setShowMessages(true); setUnreadMessages(0); }}
+                style={{background:darkMode?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.06)",
+                  border:`1px solid ${unreadMessages>0?"rgba(167,139,250,0.5)":darkMode?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.12)"}`,
+                  borderRadius:20,padding:"5px 14px",color:unreadMessages>0?"#a78bfa":darkMode?"rgba(255,255,255,0.55)":"rgba(0,0,0,0.55)",
+                  fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace",
+                  display:"flex",alignItems:"center",gap:5,transition:"all .2s",position:"relative"}}
+                onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(167,139,250,0.5)";e.currentTarget.style.color="#a78bfa";}}
+                onMouseLeave={e=>{e.currentTarget.style.borderColor=unreadMessages>0?"rgba(167,139,250,0.5)":darkMode?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.12)";e.currentTarget.style.color=unreadMessages>0?"#a78bfa":darkMode?"rgba(255,255,255,0.55)":"rgba(0,0,0,0.55)";}}>
+                <span>💬</span>Messages{unreadMessages>0&&<span style={{background:"#a78bfa",color:"white",borderRadius:"50%",width:16,height:16,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700}}>{unreadMessages}</span>}
+              </button>
             </div>
           )}
         </div>
@@ -3629,9 +3988,10 @@ export default function App() {
       {/* Modals */}
       {status==="expired" && !showPaywall && <LockedOverlay onUpgrade={()=>setShowPaywall(true)}/>}
       {showPaywall && <PaywallModal user={user} onClose={()=>setShowPaywall(false)} onSuccess={handlePaid}/>}
-      <GameModal game={selected} onClose={()=>setSelected(null)} currentUser={user}/>
+      <GameModal game={selected} onClose={()=>setSelected(null)} currentUser={user} darkMode={darkMode}/>
       {showEditProfile && user && <EditProfileModal user={user} onClose={()=>setShowEditProfile(false)} onSave={p=>setUserProfile(p)}/>}
-      {viewProfile && user && <UserProfilePage profileEmail={viewProfile} currentUser={user} onClose={()=>setViewProfile(null)} onEditProfile={()=>{setViewProfile(null);setShowEditProfile(true);}}/>}
+      {viewProfile && user && <UserProfilePage profileEmail={viewProfile} currentUser={user} onClose={()=>setViewProfile(null)} onEditProfile={()=>{setViewProfile(null);setShowEditProfile(true);}} onOpenMessages={(email)=>{ setViewProfile(null); setMessagesRecipient(email); setShowMessages(true); }}/>}
+      {showMessages && user && <MessagesModal currentUser={user} initialRecipient={messagesRecipient} onClose={()=>{ setShowMessages(false); setMessagesRecipient(null); }}/>}
       {showFAQ && <FAQModal onClose={()=>setShowFAQ(false)} darkMode={darkMode}/>}
       {showPrivacy && <PrivacyModal onClose={()=>setShowPrivacy(false)}/>}
       {showTerms && <TermsModal onClose={()=>setShowTerms(false)}/>}
