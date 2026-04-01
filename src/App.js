@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -552,6 +552,7 @@ async function sendFriendRequest(fromEmail, toEmail) {
 async function getFriendRequestStatus(fromEmail, toEmail) {
   try {
     const data = await sbFetch(`/friend_requests?or=(and(from_email.eq.${encodeURIComponent(fromEmail)},to_email.eq.${encodeURIComponent(toEmail)}),and(from_email.eq.${encodeURIComponent(toEmail)},to_email.eq.${encodeURIComponent(fromEmail)}))`);
+    if (!Array.isArray(data)) return null;
     return data?.[0] || null;
   } catch { return null; }
 }
@@ -626,7 +627,7 @@ async function getConversation(emailA, emailB) {
 async function getInbox(email) {
   try {
     const data = await sbFetch(`/messages?or=(from_email.eq.${encodeURIComponent(email)},to_email.eq.${encodeURIComponent(email)})&order=created_at.desc&limit=200`);
-    if (!data?.length) return [];
+    if (!Array.isArray(data) || !data?.length) return [];
     // Group into conversations, keep latest message per thread
     const threads = {};
     for (const m of data) {
