@@ -2412,13 +2412,13 @@ function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile, on
       getUserReviews(profileEmail),
       getFollowers(profileEmail),
       getFollowing(profileEmail),
-      currentUser && !isOwnProfile ? getFriendRequestStatus(currentUser.email, profileEmail) : Promise.resolve(null),
+      currentUser && !isOwnProfile ? getFriendRequestStatus(currentUser.email, profileEmail).catch(() => null) : Promise.resolve(null),
     ]).then(([p, r, flrs, flwg, fr]) => {
       setProfile(p); setReviews(r); setFollowers(flrs); setFollowing(flwg);
       setIsFollowing(flrs.some(f => f.follower_email === currentUser?.email));
       setFriendRequest(fr);
       setLoading(false);
-    });
+    }).catch(() => setLoading(false));
   }, [profileEmail]);
 
   const handleFollow = async () => {
