@@ -757,7 +757,10 @@ function storesOf(game) {
   if (hasSteam)    result.push({ name:"Steam",          url:`https://store.steampowered.com/search/?term=${n}`,                 icon:"🖥",  color:"#1b2838" });
   if (hasEpic)     result.push({ name:"Epic Games",     url:`https://store.epicgames.com/en-US/browse?q=${n}`,                  icon:"⚡",  color:"#2a2a2a" });
   if (hasGOG)      result.push({ name:"GOG",            url:`https://www.gog.com/games?search=${n}`,                            icon:"🌍",  color:"#7b2fbe" });
-  if (hasPS)       result.push({ name:"PlayStation",    url:`https://store.playstation.com/en-us/search/${n}`,                  icon:"🎮",  color:"#003087" });
+  if (hasPS) {
+    result.push({ name:"PS Store",       url:`https://store.playstation.com/en-us/search/${n}`,          icon:"🎮",  color:"#003087" });
+    result.push({ name:"PSNProfiles",    url:`https://psnprofiles.com/search/games?q=${n}`,               icon:"🏆",  color:"#003087" });
+  }
   if (hasXbox)     result.push({ name:"Xbox",           url:`https://www.xbox.com/en-US/Search/Results?q=${n}`,                 icon:"🟢",  color:"#107c10" });
   if (hasNintendo) result.push({ name:"Nintendo",       url:`https://www.nintendo.com/search/#q=${n}&p=1&cat=gme&sort=df`,      icon:"🔴",  color:"#e4000f" });
   if (hasMobile)   result.push({ name:"Mobile",         url:`https://play.google.com/store/search?q=${n}&c=apps`,               icon:"📱",  color:"#01875f" });
@@ -767,7 +770,8 @@ function storesOf(game) {
     return [
       { name:"Steam",       url:`https://store.steampowered.com/search/?term=${n}`, icon:"🖥",  color:"#1b2838" },
       { name:"Epic Games",  url:`https://store.epicgames.com/en-US/browse?q=${n}`,  icon:"⚡",  color:"#2a2a2a" },
-      { name:"PlayStation", url:`https://store.playstation.com/en-us/search/${n}`,  icon:"🎮",  color:"#003087" },
+      { name:"PS Store",    url:`https://store.playstation.com/en-us/search/${n}`,  icon:"🎮",  color:"#003087" },
+      { name:"PSNProfiles", url:`https://psnprofiles.com/search/games?q=${n}`,      icon:"🏆",  color:"#003087" },
       { name:"Xbox",        url:`https://www.xbox.com/en-US/Search/Results?q=${n}`, icon:"🟢",  color:"#107c10" },
     ];
   }
@@ -2117,6 +2121,7 @@ function EditProfileModal({ user, onClose, onSave }) {
   const [gamerTag, setGamerTag] = useState("");
   const [bio, setBio] = useState("");
   const [status, setStatus] = useState("");
+  const [psnId, setPsnId] = useState("");
   const [avatarEmoji, setAvatarEmoji] = useState("🎮");
   const [avatarColor, setAvatarColor] = useState("#a78bfa");
   const [avatarUrl, setAvatarUrl] = useState("");
@@ -2138,6 +2143,7 @@ function EditProfileModal({ user, onClose, onSave }) {
         setGamerTag(p.gamer_tag || "");
         setBio(p.bio || "");
         setStatus(p.status || "");
+        setPsnId(p.psn_id || "");
         setAvatarEmoji(p.avatar_emoji || "🎮");
         setAvatarColor(p.avatar_color || "#a78bfa");
         setAvatarUrl(p.avatar_url || "");
@@ -2178,7 +2184,7 @@ function EditProfileModal({ user, onClose, onSave }) {
         const existing = await getProfileByTag(gamerTag);
         if (existing && existing.user_email !== user.email) { setErr("That gamer tag is taken."); setSaving(false); return; }
       }
-      const profile = { user_email: user.email, gamer_tag: gamerTag||null, bio: bio||null, status: status||null, avatar_emoji: avatarEmoji, avatar_color: avatarColor, avatar_url: avatarUrl||null, banner_url: bannerUrl||null };
+      const profile = { user_email: user.email, gamer_tag: gamerTag||null, bio: bio||null, status: status||null, psn_id: psnId||null, avatar_emoji: avatarEmoji, avatar_color: avatarColor, avatar_url: avatarUrl||null, banner_url: bannerUrl||null };
       await upsertProfile(profile);
       onSave(profile);
       onClose();
@@ -2246,6 +2252,14 @@ function EditProfileModal({ user, onClose, onSave }) {
               <div><label style={labelStyle}>BIO</label>
                 <textarea placeholder="Tell the community about yourself and how you game..." value={bio} onChange={e=>setBio(e.target.value)}
                   style={{...inputStyle,resize:"vertical",minHeight:90}}/>
+              </div>
+              <div>
+                <label style={labelStyle}>PSN ID (optional)</label>
+                <div style={{position:"relative"}}>
+                  <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:14}}>🎮</span>
+                  <input placeholder="e.g. YourPSN_ID" value={psnId} onChange={e=>setPsnId(e.target.value.replace(/\s/g,""))} style={{...inputStyle,paddingLeft:34}}/>
+                </div>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.2)",fontFamily:"'Space Mono',monospace",marginTop:5}}>Your PSN username — shows a link to your PSNProfiles page on your profile.</div>
               </div>
             </div>
           )}
@@ -2546,7 +2560,15 @@ function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile, on
           </div>
 
           {/* Bio */}
-          {profile?.bio && <p style={{fontSize:12,color:"rgba(255,255,255,0.5)",fontFamily:"'Space Mono',monospace",lineHeight:1.8,margin:"0 0 16px",maxWidth:520}}>{profile.bio}</p>}
+          {profile?.bio && <p style={{fontSize:12,color:"rgba(255,255,255,0.5)",fontFamily:"'Space Mono',monospace",lineHeight:1.8,margin:"0 0 10px",maxWidth:520}}>{profile.bio}</p>}
+          {profile?.psn_id && (
+            <a href={`https://psnprofiles.com/${encodeURIComponent(profile.psn_id)}`} target="_blank" rel="noopener noreferrer"
+              style={{display:"inline-flex",alignItems:"center",gap:6,background:"rgba(0,48,135,0.2)",border:"1px solid rgba(0,112,209,0.3)",borderRadius:20,padding:"5px 12px",fontSize:10,color:"#60a5fa",fontFamily:"'Space Mono',monospace",textDecoration:"none",marginBottom:16,transition:"all .2s"}}
+              onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(0,112,209,0.6)"}
+              onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(0,112,209,0.3)"}>
+              🎮 PSN: {profile.psn_id} <span style={{opacity:0.5}}>→ PSNProfiles</span>
+            </a>
+          )}
 
           {/* STATS ROW */}
           <div style={{display:"flex",gap:0,marginBottom:22,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,overflow:"hidden"}}>
