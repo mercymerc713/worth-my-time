@@ -3362,7 +3362,11 @@ export default function App() {
       kidsModeRef.current = on;
       setActiveParentFilter(null);
       setParentalModeActive(false);
-      setTimeout(() => fetchGames(search, filters, sortBy, 1), 50);
+      if (on) {
+        setTimeout(() => handleParentSearch("kids", 1), 50);
+      } else {
+        setTimeout(() => fetchGames(search, filters, sortBy, 1), 50);
+      }
     };
     window.addEventListener("wmt_kids_mode_change", handler);
     return () => window.removeEventListener("wmt_kids_mode_change", handler);
@@ -3525,11 +3529,13 @@ export default function App() {
   // Auto-load a random page of top-rated games on first login
   useEffect(() => {
     if (!user || !access) return;
-    // Kids Mode: RAWG's E/E10+ pool is much smaller — stay within pages 1-5
-    // to avoid empty pages. Normal mode can use wider random range.
-    const maxPage = kidsModeRef.current ? 5 : 20;
-    const randomPage = Math.floor(Math.random() * maxPage) + 1;
-    fetchGames("", filters, "rating", randomPage);
+    if (kidsModeRef.current) {
+      // Kids Mode: use tag-based search — RAWG's esrb_ratings filter is unreliable
+      handleParentSearch("kids", 1);
+    } else {
+      const randomPage = Math.floor(Math.random() * 20) + 1;
+      fetchGames("", filters, "rating", randomPage);
+    }
   }, [user?.email, access]);
 
   useEffect(() => {
@@ -3863,8 +3869,8 @@ export default function App() {
           </button>
         </div>
 
-        {/* Filter Toggle */}
-        {access && (
+        {/* Filter Toggle — hidden in Kids Mode */}
+        {access && !kidsMode && (
           <div style={{maxWidth:900,margin:"0 auto 14px",padding:"0 16px"}}>
             <button onClick={()=>setShowFilters(!showFilters)} style={{background:darkMode?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.07)",border:`1px solid ${darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.2)"}`,borderRadius:11,padding:"9px 16px",color:darkMode?"rgba(255,255,255,0.6)":"#111111",cursor:"pointer",fontSize:11,fontFamily:"'Space Mono',monospace",display:"flex",alignItems:"center",gap:8}}>
               ⚙ Filters {showFilters?"▲":"▼"}
@@ -3914,20 +3920,22 @@ export default function App() {
         {hasLoaded && (
           <div style={{maxWidth:900,margin:"0 auto 12px",padding:"0 16px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
             <div style={{fontSize:10,color:darkMode?"rgba(255,255,255,0.3)":"#222222",fontFamily:"'Space Mono',monospace",fontWeight:700}}>{total.toLocaleString()} games</div>
-            <div style={{display:"flex",gap:5}}>
-              {[["newest","🆕 Newest"],["rating","⭐ Top Rated"],["metacritic","📊 Metacritic"],["popular","🔥 Popular"]].map(([v,l])=>(
-                <button key={v} onClick={()=>{setSortBy(v);setPage(1);}}
-                  style={{
-                    background: sortBy===v ? "rgba(167,139,250,0.2)" : darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.07)",
-                    color: sortBy===v ? "#a78bfa" : darkMode ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.65)",
-                    border: `1px solid ${sortBy===v ? "#a78bfa60" : darkMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.2)"}`,
-                    borderRadius:7, padding:"5px 10px", cursor:"pointer",
-                    fontSize:10, fontFamily:"'Space Mono',monospace",
-                    fontWeight: sortBy===v ? 700 : 400,
-                    transition:"all .2s"
-                  }}>{l}</button>
-              ))}
-            </div>
+            {!kidsMode && (
+              <div style={{display:"flex",gap:5}}>
+                {[["newest","🆕 Newest"],["rating","⭐ Top Rated"],["metacritic","📊 Metacritic"],["popular","🔥 Popular"]].map(([v,l])=>(
+                  <button key={v} onClick={()=>{setSortBy(v);setPage(1);}}
+                    style={{
+                      background: sortBy===v ? "rgba(167,139,250,0.2)" : darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.07)",
+                      color: sortBy===v ? "#a78bfa" : darkMode ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.65)",
+                      border: `1px solid ${sortBy===v ? "#a78bfa60" : darkMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.2)"}`,
+                      borderRadius:7, padding:"5px 10px", cursor:"pointer",
+                      fontSize:10, fontFamily:"'Space Mono',monospace",
+                      fontWeight: sortBy===v ? 700 : 400,
+                      transition:"all .2s"
+                    }}>{l}</button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
