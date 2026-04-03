@@ -13,6 +13,33 @@
   "lang": "en",
   "dir": "ltr",
   "categories": ["games", "entertainment", "lifestyle"],
+  "shortcuts": [
+    {
+      "name": "Surprise Me",
+      "short_name": "Surprise",
+      "description": "Discover a random top-rated game",
+      "url": "/?surprise=1",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Search Games",
+      "short_name": "Search",
+      "description": "Search 500,000+ games",
+      "url": "/",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Community",
+      "short_name": "Community",
+      "description": "See what other gamers are playing",
+      "url": "/?view=community",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "scope_extensions": [
+    { "origin": "https://worthmytime.info" },
+    { "origin": "https://www.worthmytime.info" }
+  ],
   "icons": [
     {
       "src": "/favicon-32.png",
