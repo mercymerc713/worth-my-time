@@ -1931,16 +1931,20 @@ function GameCard({ game, onClick, locked, darkMode=true, currentUser=null, inBa
 
   if (!game || !game.id) return null;
 
+  const worthColor = scores.w >= 75 ? "#4ade80" : scores.w >= 50 ? color : "#f87171";
+
   return (
     <div onClick={()=>onClick(game)} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
       style={{borderRadius:18,overflow:"hidden",cursor:"pointer",position:"relative",
-        border:`1px solid ${hov?color+"70":"rgba(255,255,255,0.07)"}`,
+        border:`1px solid ${hov?color+"70":darkMode?"rgba(255,255,255,0.07)":"rgba(0,0,0,0.09)"}`,
         transform:hov?"translateY(-4px) scale(1.01)":"translateY(0) scale(1)",
         transition:"all .28s cubic-bezier(.4,0,.2,1)",
         background:darkMode?"#0d0d18":"#ffffff",
         filter:locked?"blur(2px) brightness(0.5)":"none",
         boxShadow:hov?`0 20px 60px ${color}30`:darkMode?"0 2px 12px rgba(0,0,0,0.4)":"0 2px 12px rgba(0,0,0,0.1)"}}>
-      <div style={{position:"relative",height:125,overflow:"hidden",background:"#1a1a2e"}}>
+      {/* Worth It accent bar */}
+      <div style={{height:3,background:`linear-gradient(90deg,${worthColor},${worthColor}55)`,opacity:hov?1:0.7,transition:"opacity .28s"}}/>
+      <div style={{position:"relative",height:122,overflow:"hidden",background:"#1a1a2e"}}>
         {game.background_image
           ? <img src={game.background_image} alt={game.name} loading="lazy" decoding="async" style={{width:"100%",height:"100%",objectFit:"cover",opacity:.8,transition:"transform .4s",transform:hov?"scale(1.05)":"scale(1)"}}/>
           : <div style={{width:"100%",height:"100%",background:`linear-gradient(135deg,${color}30,#0d0d18)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:34}}>🎮</div>}
@@ -1961,7 +1965,7 @@ function GameCard({ game, onClick, locked, darkMode=true, currentUser=null, inBa
           <ScoreRing value={scores.a} label="Adventure" color={color} darkMode={darkMode}/>
           <ScoreRing value={scores.w} label="Worth It"  color={color} darkMode={darkMode}/>
         </div>
-        <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"rgba(255,255,255,0.3)",fontFamily:"'Space Mono',monospace"}}>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.4)",fontFamily:"'Space Mono',monospace"}}>
           <span>⏱ {scores.hltb.session}</span>
           <span>📖 {scores.hltb.main}</span>
         </div>
@@ -1974,7 +1978,7 @@ function GameCard({ game, onClick, locked, darkMode=true, currentUser=null, inBa
               await onToggleBacklog(game);
               setBacklogBusy(false);
             }}
-            style={{marginTop:9,width:"100%",padding:"6px 0",borderRadius:8,border:`1px solid ${inBacklog?"rgba(56,189,248,0.4)":"rgba(255,255,255,0.1)"}`,background:inBacklog?"rgba(56,189,248,0.1)":"transparent",color:inBacklog?"#38bdf8":"rgba(255,255,255,0.4)",fontSize:10,fontFamily:"'Space Mono',monospace",cursor:"pointer",transition:"all .2s",fontWeight:inBacklog?700:400}}>
+            style={{marginTop:9,width:"100%",padding:"6px 0",borderRadius:8,border:`1px solid ${inBacklog?"rgba(56,189,248,0.4)":darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.12)"}`,background:inBacklog?"rgba(56,189,248,0.1)":"transparent",color:inBacklog?"#38bdf8":darkMode?"rgba(255,255,255,0.4)":"rgba(0,0,0,0.45)",fontSize:10,fontFamily:"'Space Mono',monospace",cursor:"pointer",transition:"all .2s",fontWeight:inBacklog?700:400}}>
             {backlogBusy ? "..." : inBacklog ? "✓ In Backlog" : "📚 + Backlog"}
           </button>
         )}
@@ -3708,7 +3712,7 @@ export default function App() {
 
   return (
     <>
-      <style>{`*{box-sizing:border-box}body{margin:0}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#0d0d18}::-webkit-scrollbar-thumb{background:rgba(167,139,250,0.35);border-radius:4px}::-webkit-scrollbar-thumb:hover{background:rgba(167,139,250,0.6)}::selection{background:rgba(167,139,250,0.35);color:white}input::placeholder{color:rgba(255,255,255,0.25)}input:focus{outline:none;border-color:rgba(167,139,250,0.6)!important;box-shadow:0 0 0 3px rgba(167,139,250,0.12)!important}textarea:focus{outline:none;border-color:rgba(167,139,250,0.6)!important;box-shadow:0 0 0 3px rgba(167,139,250,0.12)!important}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}@keyframes fadeIn{from{opacity:0;transform:translateY(12px) scale(0.97)}to{opacity:1;transform:translateY(0) scale(1)}}.card-anim{animation:fadeIn .38s cubic-bezier(.22,1,.36,1) forwards;opacity:0}`}</style>
+      <style>{`*{box-sizing:border-box}body{margin:0}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#0d0d18}::-webkit-scrollbar-thumb{background:rgba(167,139,250,0.35);border-radius:4px}::-webkit-scrollbar-thumb:hover{background:rgba(167,139,250,0.6)}::selection{background:rgba(167,139,250,0.35);color:white}input::placeholder{color:rgba(255,255,255,0.25)}input:focus{outline:none;border-color:rgba(167,139,250,0.6)!important;box-shadow:0 0 0 3px rgba(167,139,250,0.12)!important}textarea:focus{outline:none;border-color:rgba(167,139,250,0.6)!important;box-shadow:0 0 0 3px rgba(167,139,250,0.12)!important}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}@keyframes fadeIn{from{opacity:0;transform:translateY(12px) scale(0.97)}to{opacity:1;transform:translateY(0) scale(1)}}.card-anim{animation:fadeIn .38s cubic-bezier(.22,1,.36,1) forwards;opacity:0}@keyframes shimmer{0%{background-position:-600px 0}100%{background-position:600px 0}}.skeleton{background:linear-gradient(90deg,rgba(255,255,255,0.04) 25%,rgba(255,255,255,0.09) 50%,rgba(255,255,255,0.04) 75%);background-size:600px 100%;animation:shimmer 1.6s infinite linear}`}</style>
 
       <div style={{minHeight:"100vh",background:darkMode?"#111118":"#f4f4f8",backgroundImage:darkMode?"radial-gradient(ellipse at 15% 15%,#1e0d35 0%,transparent 45%),radial-gradient(ellipse at 85% 85%,#0c1a30 0%,transparent 45%)":"radial-gradient(ellipse at 15% 15%,#e0d7ff 0%,transparent 45%),radial-gradient(ellipse at 85% 85%,#d7e8ff 0%,transparent 45%)",transition:"background .3s,color .3s"}}>
 
@@ -3716,8 +3720,12 @@ export default function App() {
         <StatusBar user={user} onUpgrade={()=>setShowPaywall(true)} onLogout={handleLogout}/>
         {/* Header */}
         <div style={{textAlign:"center",padding:"32px 20px 16px"}}>
-          <h1 style={{margin:"0 0 6px",fontSize:"clamp(30px,6vw,54px)",fontFamily:"'Bitter',serif",fontWeight:900,color:darkMode?"white":"#0f0f1a",lineHeight:1.05,letterSpacing:-1}}>Worth My Time?</h1>
-          <p style={{color:darkMode?"rgba(255,255,255,0.38)":"#333333",fontSize:13,margin:"0 auto 16px",maxWidth:340,lineHeight:1.7,fontFamily:"'Lora',serif",fontStyle:"italic"}}>
+          <div style={{display:"inline-flex",alignItems:"center",gap:6,background:darkMode?"rgba(167,139,250,0.1)":"rgba(124,58,237,0.08)",border:`1px solid ${darkMode?"rgba(167,139,250,0.25)":"rgba(124,58,237,0.2)"}`,borderRadius:20,padding:"4px 14px",marginBottom:12}}>
+            <span style={{fontSize:11}}>✨</span>
+            <span style={{fontSize:10,fontFamily:"'Space Mono',monospace",color:darkMode?"#c4b5fd":"#7c3aed",fontWeight:700,letterSpacing:0.5}}>500,000+ games scored</span>
+          </div>
+          <h1 style={{margin:"0 0 8px",fontSize:"clamp(30px,6vw,54px)",fontFamily:"'Bitter',serif",fontWeight:900,lineHeight:1.05,letterSpacing:-1,background:"linear-gradient(135deg,#a78bfa 0%,#ec4899 60%,#f59e0b 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}}>Worth My Time?</h1>
+          <p style={{color:darkMode?"rgba(255,255,255,0.38)":"#555555",fontSize:13,margin:"0 auto 16px",maxWidth:340,lineHeight:1.7,fontFamily:"'Lora',serif",fontStyle:"italic"}}>
             Real game intelligence for busy people.
           </p>
           {/* User controls row */}
@@ -3953,11 +3961,21 @@ export default function App() {
           )}
 
           {loading && (
-            <div style={{textAlign:"center",padding:"48px 20px"}}>
-              <div style={{display:"inline-flex",gap:6}}>
-                {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:"#a78bfa",animation:"pulse 1.2s ease infinite",animationDelay:`${i*.2}s`}}/>)}
-              </div>
-              <div style={{color:darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.45)",fontFamily:"'Space Mono',monospace",fontSize:11,marginTop:10}}>Searching the database...</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:13,marginBottom:26}}>
+              {[...Array(8)].map((_,i)=>(
+                <div key={i} style={{borderRadius:18,overflow:"hidden",background:darkMode?"#0d0d18":"#ffffff",border:`1px solid ${darkMode?"rgba(255,255,255,0.07)":"rgba(0,0,0,0.08)"}`}}>
+                  <div className="skeleton" style={{height:3}}/>
+                  <div className="skeleton" style={{height:122}}/>
+                  <div style={{padding:"11px 13px 13px",display:"flex",flexDirection:"column",gap:8}}>
+                    <div className="skeleton" style={{height:14,borderRadius:6,width:"85%"}}/>
+                    <div className="skeleton" style={{height:10,borderRadius:6,width:"55%"}}/>
+                    <div style={{display:"flex",justifyContent:"space-around",padding:"8px 0"}}>
+                      {[0,1,2].map(j=><div key={j} className="skeleton" style={{width:48,height:48,borderRadius:"50%"}}/>)}
+                    </div>
+                    <div className="skeleton" style={{height:28,borderRadius:8}}/>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
@@ -3984,14 +4002,40 @@ export default function App() {
           )}
 
           {!loading && hasLoaded && games.length===0 && !error && (
-            <div style={{textAlign:"center",padding:36,color:darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.45)",fontFamily:"'Space Mono',monospace",fontSize:11}}>No games found. Try adjusting your filters.</div>
+            <div style={{textAlign:"center",padding:"48px 24px"}}>
+              <div style={{fontSize:40,marginBottom:14}}>🕹️</div>
+              <div style={{color:darkMode?"rgba(255,255,255,0.7)":"#222",fontFamily:"'Bitter',serif",fontSize:16,fontWeight:700,marginBottom:8}}>No games found</div>
+              <div style={{color:darkMode?"rgba(255,255,255,0.35)":"rgba(0,0,0,0.45)",fontFamily:"'Space Mono',monospace",fontSize:11,lineHeight:1.8,maxWidth:260,margin:"0 auto"}}>Try a different search, adjust your filters, or hit <strong style={{color:"#a78bfa"}}>Surprise Me</strong> to discover something great.</div>
+            </div>
           )}
 
-          {hasLoaded && !loading && total>20 && (
-            <div style={{display:"flex",justifyContent:"center",gap:10,alignItems:"center",paddingBottom:36}}>
-              <Btn onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1} variant="ghost" style={{padding:"7px 13px",fontSize:11,borderRadius:8,opacity:page===1?.3:1}}>← Prev</Btn>
-              <span style={{color:darkMode?"rgba(255,255,255,0.3)":"rgba(0,0,0,0.5)",fontSize:11,fontFamily:"'Space Mono',monospace"}}>Page {page} of {Math.min(Math.ceil(total/20),500)}</span>
-              <Btn onClick={()=>setPage(p=>p+1)} variant="ghost" style={{padding:"7px 13px",fontSize:11,borderRadius:8}}>Next →</Btn>
+          {hasLoaded && !loading && total>40 && (
+            <div style={{display:"flex",justifyContent:"center",gap:6,alignItems:"center",paddingBottom:36,flexWrap:"wrap"}}>
+              <Btn onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1} variant="ghost" style={{padding:"7px 14px",fontSize:11,borderRadius:10,opacity:page===1?.3:1}}>← Prev</Btn>
+              {(() => {
+                const totalPages = Math.min(Math.ceil(total/40), 500);
+                const pages = [];
+                const addPage = (p) => pages.push(
+                  <button key={p} onClick={()=>setPage(p)}
+                    style={{width:32,height:32,borderRadius:8,border:`1px solid ${p===page?"rgba(167,139,250,0.6)":darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.15)"}`,
+                      background:p===page?"rgba(167,139,250,0.18)":"transparent",
+                      color:p===page?"#a78bfa":darkMode?"rgba(255,255,255,0.45)":"rgba(0,0,0,0.5)",
+                      fontSize:11,fontFamily:"'Space Mono',monospace",fontWeight:p===page?700:400,cursor:"pointer",transition:"all .15s"}}>
+                    {p}
+                  </button>
+                );
+                if (totalPages <= 7) {
+                  for (let p=1; p<=totalPages; p++) addPage(p);
+                } else {
+                  addPage(1);
+                  if (page > 3) pages.push(<span key="e1" style={{color:"rgba(255,255,255,0.2)",fontSize:11,padding:"0 2px"}}>…</span>);
+                  for (let p=Math.max(2,page-1); p<=Math.min(totalPages-1,page+1); p++) addPage(p);
+                  if (page < totalPages-2) pages.push(<span key="e2" style={{color:"rgba(255,255,255,0.2)",fontSize:11,padding:"0 2px"}}>…</span>);
+                  addPage(totalPages);
+                }
+                return pages;
+              })()}
+              <Btn onClick={()=>setPage(p=>Math.min(p+1,Math.min(Math.ceil(total/40),500)))} disabled={page>=Math.min(Math.ceil(total/40),500)} variant="ghost" style={{padding:"7px 14px",fontSize:11,borderRadius:10,opacity:page>=Math.min(Math.ceil(total/40),500)?.3:1}}>Next →</Btn>
             </div>
           )}
         </div></>}
