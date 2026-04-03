@@ -655,6 +655,73 @@ async function getUnreadCount(email) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// LIKES & COMMENTS HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+function reviewId(r) { return `${r.user_email}_${r.game_id}`; }
+
+async function toggleLike(userEmail, rid, isLiked) {
+  try {
+    if (isLiked) {
+      await sbFetch(`/review_likes?user_email=eq.${encodeURIComponent(userEmail)}&review_id=eq.${encodeURIComponent(rid)}`, { method: "DELETE" });
+    } else {
+      await sbFetch("/review_likes", { method: "POST", headers: { "Content-Type": "application/json", "Prefer": "resolution=ignore-duplicates" }, body: JSON.stringify({ user_email: userEmail, review_id: rid }) });
+    }
+    return true;
+  } catch { return false; }
+}
+
+async function batchLikes(reviewIds) {
+  try {
+    const data = await sbFetch(`/review_likes?review_id=in.(${reviewIds.map(encodeURIComponent).join(",")})&select=review_id`);
+    const counts = {};
+    for (const r of (data || [])) counts[r.review_id] = (counts[r.review_id] || 0) + 1;
+    return counts;
+  } catch { return {}; }
+}
+
+async function getUserLikeSet(userEmail) {
+  try {
+    const data = await sbFetch(`/review_likes?user_email=eq.${encodeURIComponent(userEmail)}&select=review_id`);
+    return new Set((data || []).map(r => r.review_id));
+  } catch { return new Set(); }
+}
+
+async function getComments(rid) {
+  try {
+    const data = await sbFetch(`/review_comments?review_id=eq.${encodeURIComponent(rid)}&order=created_at.asc&limit=50`);
+    return data || [];
+  } catch { return []; }
+}
+
+async function postComment(rid, userEmail, userName, content) {
+  try {
+    await sbFetch("/review_comments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ review_id: rid, user_email: userEmail, user_name: userName, content }) });
+    return true;
+  } catch { return false; }
+}
+
+async function batchCommentCounts(reviewIds) {
+  try {
+    const data = await sbFetch(`/review_comments?review_id=in.(${reviewIds.map(encodeURIComponent).join(",")})&select=review_id`);
+    const counts = {};
+    for (const r of (data || [])) counts[r.review_id] = (counts[r.review_id] || 0) + 1;
+    return counts;
+  } catch { return {}; }
+}
+
+async function getTrendingGames() {
+  try {
+    const data = await sbFetch(`/reviews?order=created_at.desc&limit=300&select=game_id,game_name`);
+    const counts = {};
+    for (const r of (data || [])) {
+      if (!counts[r.game_id]) counts[r.game_id] = { name: r.game_name, id: r.game_id, count: 0 };
+      counts[r.game_id].count++;
+    }
+    return Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 8);
+  } catch { return []; }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GAME DATA HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 const HLTB = {
@@ -3080,52 +3147,201 @@ function LockedOverlay({ onUpgrade }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // COMMUNITY FEED
 // ─────────────────────────────────────────────────────────────────────────────
+function ReviewCard({ r, user, darkMode, onViewProfile, likeCounts, userLikeSet, commentCounts, onToggleLike, onOpenComments }) {
+  const rid = reviewId(r);
+  const liked = userLikeSet.has(rid);
+  const likes = likeCounts[rid] || 0;
+  const comments = commentCounts[rid] || 0;
+  const isAnon = r.user_name === "Anonymous";
+  const avatarBg = isAnon ? "rgba(255,255,255,0.15)" : `hsl(${(r.user_name?.charCodeAt(0)||0)*7%360},60%,40%)`;
+  const accentColors = ["#a78bfa","#ec4899","#38bdf8","#4ade80","#f59e0b","#f87171","#818cf8"];
+  const accent = accentColors[(r.game_id||0) % accentColors.length];
+  const bg = darkMode ? "#0d0d18" : "#fff";
+  const border = darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.08)";
+  const text = darkMode ? "white" : "#0f0f1a";
+  const muted = darkMode ? "rgba(255,255,255,0.35)" : "#666";
+  return (
+    <div style={{background:bg,border:`1px solid ${border}`,borderRadius:16,overflow:"hidden"}}>
+      <div style={{height:3,background:`linear-gradient(90deg,${accent},${accent}55)`}}/>
+      <div style={{padding:16}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+          <div onClick={()=>!isAnon&&onViewProfile(r.user_email)}
+            style={{cursor:isAnon?"default":"pointer",width:38,height:38,borderRadius:"50%",background:avatarBg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:isAnon?16:14,fontWeight:700,color:"white",flexShrink:0,border:`2px solid ${accent}40`}}>
+            {isAnon?"👤":r.user_name?.[0]?.toUpperCase()||"?"}
+          </div>
+          <div style={{flex:1}}>
+            <div onClick={()=>!isAnon&&onViewProfile(r.user_email)} style={{cursor:isAnon?"default":"pointer",fontSize:13,fontWeight:700,color:text,fontFamily:"'Space Mono',monospace"}}>{r.user_name}</div>
+            <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace"}}>{new Date(r.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
+          </div>
+          <div style={{display:"flex",gap:1}}>{[1,2,3,4,5].map(s=><span key={s} style={{fontSize:13,color:s<=r.rating?"#fbbf24":darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.12)"}}>★</span>)}</div>
+        </div>
+        <div style={{background:darkMode?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.04)",borderRadius:10,padding:"10px 13px",marginBottom:r.review_text?10:0,borderLeft:`3px solid ${accent}`}}>
+          <div style={{fontSize:14,fontWeight:700,color:text,fontFamily:"'Bitter',serif"}}>{r.game_name}</div>
+          {r.time_spent && <div style={{fontSize:10,color:muted,fontFamily:"'Space Mono',monospace",marginTop:3}}>⏱ {r.time_spent}</div>}
+        </div>
+        {r.review_text && <div style={{fontSize:12,color:darkMode?"rgba(255,255,255,0.65)":"#444",fontFamily:"'Space Mono',monospace",lineHeight:1.7,marginBottom:12}}>{r.review_text}</div>}
+        <div style={{display:"flex",gap:12,alignItems:"center",paddingTop:10,borderTop:`1px solid ${border}`}}>
+          <button onClick={()=>onToggleLike(rid,liked)}
+            style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",cursor:"pointer",padding:"4px 10px",borderRadius:20,
+              background:liked?`${accent}18`:"transparent",
+              color:liked?accent:muted,fontSize:12,fontFamily:"'Space Mono',monospace",transition:"all .15s"}}>
+            <span style={{fontSize:15}}>{liked?"❤️":"🤍"}</span>
+            <span style={{fontWeight:liked?700:400}}>{likes > 0 ? likes : ""}</span>
+          </button>
+          <button onClick={()=>onOpenComments(rid,r)}
+            style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",cursor:"pointer",padding:"4px 10px",borderRadius:20,color:muted,fontSize:12,fontFamily:"'Space Mono',monospace",transition:"all .15s"}}>
+            <span style={{fontSize:14}}>💬</span>
+            <span>{comments > 0 ? comments : "Comment"}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CommentsPanel({ rid, review, user, darkMode, onClose, onViewProfile }) {
+  const [comments, setComments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [input, setInput] = useState("");
+  const [posting, setPosting] = useState(false);
+  const bg = darkMode ? "#0d0d18" : "#fff";
+  const border = darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.08)";
+  const text = darkMode ? "white" : "#0f0f1a";
+  const muted = darkMode ? "rgba(255,255,255,0.35)" : "#666";
+  const bottomRef = useRef(null);
+  useEffect(() => { getComments(rid).then(d => { setComments(d); setLoading(false); }); }, [rid]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:"smooth" }); }, [comments]);
+  const submit = async () => {
+    if (!input.trim() || posting) return;
+    setPosting(true);
+    const name = user.gamerTag || user.email?.split("@")[0] || "Player";
+    await postComment(rid, user.email, name, input.trim());
+    setComments(c => [...c, { user_email: user.email, user_name: name, content: input.trim(), created_at: new Date().toISOString() }]);
+    setInput("");
+    setPosting(false);
+  };
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:400,display:"flex",alignItems:"flex-end",justifyContent:"center",padding:"0",backdropFilter:"blur(8px)"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:darkMode?"#0d0d18":"#f8f8fc",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:600,maxHeight:"70vh",display:"flex",flexDirection:"column",border:`1px solid ${border}`}}>
+        <div style={{padding:"14px 18px",borderBottom:`1px solid ${border}`,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:700,color:text,fontFamily:"'Bitter',serif"}}>{review.game_name}</div>
+            <div style={{fontSize:10,color:muted,fontFamily:"'Space Mono',monospace"}}>by {review.user_name}</div>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:muted,fontSize:20,cursor:"pointer"}}>✕</button>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"14px 18px",display:"flex",flexDirection:"column",gap:10}}>
+          {loading && <div style={{color:muted,fontFamily:"'Space Mono',monospace",fontSize:11,textAlign:"center",padding:20}}>Loading comments...</div>}
+          {!loading && comments.length===0 && <div style={{color:muted,fontFamily:"'Space Mono',monospace",fontSize:11,textAlign:"center",padding:24}}>No comments yet — be the first!</div>}
+          {comments.map((c,i) => {
+            const avatarBg = `hsl(${(c.user_name?.charCodeAt(0)||0)*7%360},60%,40%)`;
+            return (
+              <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                <div onClick={()=>onViewProfile(c.user_email)} style={{cursor:"pointer",width:30,height:30,borderRadius:"50%",background:avatarBg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"white",flexShrink:0}}>
+                  {c.user_name?.[0]?.toUpperCase()||"?"}
+                </div>
+                <div style={{flex:1,background:darkMode?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.04)",borderRadius:10,padding:"8px 12px"}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"#a78bfa",fontFamily:"'Space Mono',monospace",marginBottom:3}}>{c.user_name}</div>
+                  <div style={{fontSize:12,color:darkMode?"rgba(255,255,255,0.75)":"#333",fontFamily:"'Space Mono',monospace",lineHeight:1.6}}>{c.content}</div>
+                </div>
+              </div>
+            );
+          })}
+          <div ref={bottomRef}/>
+        </div>
+        <div style={{padding:"12px 18px",borderTop:`1px solid ${border}`,display:"flex",gap:8,flexShrink:0}}>
+          <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}
+            placeholder="Write a comment..."
+            style={{flex:1,background:darkMode?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.05)",border:`1px solid ${border}`,borderRadius:10,padding:"9px 13px",color:text,fontSize:12,fontFamily:"'Space Mono',monospace"}}/>
+          <button onClick={submit} disabled={!input.trim()||posting}
+            style={{background:"linear-gradient(135deg,#a78bfa,#7c3aed)",border:"none",borderRadius:10,padding:"9px 16px",color:"white",fontWeight:700,fontSize:12,cursor:"pointer",opacity:!input.trim()||posting?0.5:1,fontFamily:"'Space Mono',monospace"}}>
+            {posting?"...":"Send"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CommunityFeed({ user, darkMode, onViewProfile }) {
   const [feedReviews, setFeedReviews] = useState([]);
+  const [allReviews, setAllReviews] = useState([]);
   const [suggested, setSuggested] = useState([]);
+  const [trending, setTrending] = useState([]);
   const [followingEmails, setFollowingEmails] = useState([]);
   const [loading, setLoading] = useState(true);
   const [followingInProgress, setFollowingInProgress] = useState({});
-  const [subTab, setSubTab] = useState("feed"); // feed | discover
+  const [subTab, setSubTab] = useState("everyone"); // feed | everyone | discover
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [likeCounts, setLikeCounts] = useState({});
+  const [userLikeSet, setUserLikeSet] = useState(new Set());
+  const [commentCounts, setCommentCounts] = useState({});
+  const [openComments, setOpenComments] = useState(null); // {rid, review}
 
   const bg     = darkMode ? "#0d0d18" : "#fff";
   const border = darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.08)";
   const text   = darkMode ? "white" : "#0f0f1a";
   const muted  = darkMode ? "rgba(255,255,255,0.35)" : "#666";
 
+  const loadSocialData = async (reviews) => {
+    if (!reviews.length) return;
+    const ids = reviews.map(reviewId);
+    const [lc, ul, cc] = await Promise.all([
+      batchLikes(ids),
+      getUserLikeSet(user.email),
+      batchCommentCounts(ids),
+    ]);
+    setLikeCounts(lc);
+    setUserLikeSet(ul);
+    setCommentCounts(cc);
+  };
+
   const loadFeed = async () => {
     setLoading(true);
-    const followingData = await getFollowing(user.email);
+    const [followingData, allRevs, trendingData] = await Promise.all([
+      getFollowing(user.email).catch(() => []),
+      sbFetch(`/reviews?order=created_at.desc&limit=60`).catch(() => []),
+      getTrendingGames(),
+    ]);
     const emails = followingData.map(f => f.following_email);
     setFollowingEmails(emails);
+    setAllReviews(allRevs || []);
+    setTrending(trendingData);
 
     if (emails.length > 0) {
       try {
-        const reviews = await sbFetch(`/reviews?user_email=in.(${emails.join(",")})&order=created_at.desc&limit=40`);
-        setFeedReviews(reviews || []);
+        const fr = await sbFetch(`/reviews?user_email=in.(${emails.map(encodeURIComponent).join(",")})&order=created_at.desc&limit=40`);
+        setFeedReviews(fr || []);
+        await loadSocialData([...(fr||[]), ...(allRevs||[])]);
       } catch { setFeedReviews([]); }
+    } else {
+      await loadSocialData(allRevs || []);
     }
 
-    try {
-      const recent = await sbFetch(`/reviews?order=created_at.desc&limit=60`);
-      const seen = new Set([user.email, ...emails]);
-      const people = [];
-      for (const r of (recent || [])) {
-        if (!seen.has(r.user_email) && r.user_name !== "Anonymous") {
-          seen.add(r.user_email);
-          people.push({ email: r.user_email, name: r.user_name, gameName: r.game_name });
-        }
-        if (people.length >= 8) break;
+    // Build suggested players from recent reviewers
+    const seen = new Set([user.email, ...emails]);
+    const people = [];
+    for (const r of (allRevs || [])) {
+      if (!seen.has(r.user_email) && r.user_name !== "Anonymous") {
+        seen.add(r.user_email);
+        people.push({ email: r.user_email, name: r.user_name, gameName: r.game_name });
       }
-      setSuggested(people);
-    } catch {}
+      if (people.length >= 8) break;
+    }
+    setSuggested(people);
     setLoading(false);
   };
 
   useEffect(() => { loadFeed(); }, [user.email]);
+
+  const handleToggleLike = async (rid, isLiked) => {
+    // Optimistic update
+    setUserLikeSet(prev => { const s = new Set(prev); isLiked ? s.delete(rid) : s.add(rid); return s; });
+    setLikeCounts(prev => ({ ...prev, [rid]: Math.max(0, (prev[rid]||0) + (isLiked?-1:1)) }));
+    await toggleLike(user.email, rid, isLiked);
+  };
 
   const searchPlayers = async (q) => {
     if (!q.trim()) { setSearchResults([]); return; }
@@ -3158,19 +3374,58 @@ function CommunityFeed({ user, darkMode, onViewProfile }) {
     loadFeed();
   };
 
+  const playerCard = (p) => (
+    <div key={p.email} style={{display:"flex",alignItems:"center",gap:12,background:bg,border:`1px solid ${border}`,borderRadius:12,padding:"12px 14px"}}>
+      <div onClick={()=>onViewProfile(p.email)} style={{cursor:"pointer",width:42,height:42,borderRadius:"50%",background:`hsl(${(p.name?.charCodeAt(0)||0)*7%360},60%,40%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,color:"white",flexShrink:0}}>
+        {p.name?.[0]?.toUpperCase()||"?"}
+      </div>
+      <div style={{flex:1}} onClick={()=>onViewProfile(p.email)}>
+        <div style={{fontSize:13,fontWeight:700,color:text,fontFamily:"'Space Mono',monospace",cursor:"pointer"}}>{p.name}</div>
+        {p.gamertag && <div style={{fontSize:9,color:"#a78bfa",fontFamily:"'Space Mono',monospace"}}>@{p.gamertag}</div>}
+        {p.gameName && <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace"}}>🎮 {p.gameName}</div>}
+      </div>
+      {followingEmails.includes(p.email)
+        ? <span style={{fontSize:10,color:"#4ade80",fontFamily:"'Space Mono',monospace",fontWeight:700}}>✓ Following</span>
+        : <button onClick={()=>handleFollow(p.email)} disabled={!!followingInProgress[p.email]}
+            style={{background:"linear-gradient(135deg,#a78bfa,#7c3aed)",border:"none",borderRadius:8,padding:"7px 14px",color:"white",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace",opacity:followingInProgress[p.email]?0.7:1}}>
+            {followingInProgress[p.email]?"...":"+ Follow"}
+          </button>
+      }
+    </div>
+  );
+
+  const reviewCards = (reviews) => (
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {reviews.filter(r=>r.user_name!=="Anonymous").map((r,i)=>(
+        <ReviewCard key={`${r.user_email}-${r.game_id}-${i}`} r={r} user={user} darkMode={darkMode}
+          onViewProfile={onViewProfile} likeCounts={likeCounts} userLikeSet={userLikeSet}
+          commentCounts={commentCounts} onToggleLike={handleToggleLike}
+          onOpenComments={(rid,rev)=>setOpenComments({rid,review:rev})}/>
+      ))}
+    </div>
+  );
+
   if (loading) return (
-    <div style={{textAlign:"center",padding:"48px 20px"}}>
-      <div style={{display:"inline-flex",gap:6}}>{[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:"#a78bfa",animation:"pulse 1.2s ease infinite",animationDelay:`${i*.2}s`}}/>)}</div>
-      <div style={{color:muted,fontFamily:"'Space Mono',monospace",fontSize:11,marginTop:10}}>Loading your feed...</div>
+    <div style={{maxWidth:640,margin:"0 auto",padding:"0 16px 40px"}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr",gap:12}}>
+        {[...Array(4)].map((_,i)=>(
+          <div key={i} style={{borderRadius:16,overflow:"hidden",background:bg,border:`1px solid ${border}`}}>
+            <div className="skeleton" style={{height:3}}/><div style={{padding:16,display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{display:"flex",gap:10,alignItems:"center"}}><div className="skeleton" style={{width:38,height:38,borderRadius:"50%"}}/><div style={{flex:1,display:"flex",flexDirection:"column",gap:6}}><div className="skeleton" style={{height:12,width:"40%",borderRadius:6}}/><div className="skeleton" style={{height:9,width:"25%",borderRadius:6}}/></div></div>
+            <div className="skeleton" style={{height:56,borderRadius:10}}/><div className="skeleton" style={{height:10,borderRadius:6,width:"70%"}}/>
+          </div></div>
+        ))}
+      </div>
     </div>
   );
 
   return (
     <div style={{maxWidth:640,margin:"0 auto",padding:"0 16px 40px"}}>
+      {openComments && <CommentsPanel rid={openComments.rid} review={openComments.review} user={user} darkMode={darkMode} onViewProfile={onViewProfile} onClose={()=>setOpenComments(null)}/>}
 
       {/* Sub-tab bar */}
       <div style={{display:"flex",background:darkMode?"rgba(0,0,0,0.35)":"rgba(0,0,0,0.05)",borderRadius:11,padding:3,gap:3,marginBottom:20}}>
-        {[["feed","📋 My Feed"],["discover","🔍 Discover Players"]].map(([v,l])=>(
+        {[["everyone","🌍 Everyone"],["feed","📋 My Feed"],["discover","🔍 Discover"]].map(([v,l])=>(
           <button key={v} onClick={()=>setSubTab(v)}
             style={{flex:1,background:subTab===v?darkMode?"rgba(167,139,250,0.2)":"white":"transparent",
               color:subTab===v?"#a78bfa":darkMode?"rgba(255,255,255,0.4)":"rgba(0,0,0,0.45)",
@@ -3182,42 +3437,75 @@ function CommunityFeed({ user, darkMode, onViewProfile }) {
         ))}
       </div>
 
-      {/* ── DISCOVER PLAYERS TAB ── */}
-      {subTab === "discover" && (
+      {/* ── EVERYONE TAB ── */}
+      {subTab === "everyone" && (
         <div>
-          {/* Search box */}
-          <div style={{marginBottom:20}}>
-            <input
-              placeholder="Search by name or gamer tag..."
+          <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800,marginBottom:12}}>🌍 LATEST FROM THE COMMUNITY</div>
+          {allReviews.length === 0
+            ? <div style={{textAlign:"center",padding:"40px 20px",background:bg,border:`1px solid ${border}`,borderRadius:16}}>
+                <div style={{fontSize:36,marginBottom:10}}>🎮</div>
+                <div style={{fontSize:14,fontWeight:700,color:text,fontFamily:"'Bitter',serif",marginBottom:8}}>No reviews yet</div>
+                <div style={{fontSize:11,color:muted,fontFamily:"'Space Mono',monospace",lineHeight:1.7}}>Be the first to review a game!</div>
+              </div>
+            : reviewCards(allReviews)
+          }
+        </div>
+      )}
+
+      {/* ── MY FEED TAB ── */}
+      {subTab === "feed" && (
+        <div>
+          <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800,marginBottom:12}}>
+            📋 FROM PEOPLE YOU FOLLOW {feedReviews.length>0&&`· ${feedReviews.length} reviews`}
+          </div>
+          {followingEmails.length === 0
+            ? <div style={{textAlign:"center",padding:"40px 20px",background:bg,border:`1px solid ${border}`,borderRadius:16}}>
+                <div style={{fontSize:36,marginBottom:10}}>👥</div>
+                <div style={{fontSize:14,fontWeight:700,color:text,fontFamily:"'Bitter',serif",marginBottom:8}}>Your feed is empty</div>
+                <div style={{fontSize:11,color:muted,fontFamily:"'Space Mono',monospace",lineHeight:1.7}}>Follow players in the <strong style={{color:"#a78bfa"}}>Everyone</strong> or <strong style={{color:"#a78bfa"}}>Discover</strong> tabs to fill your feed.</div>
+              </div>
+            : feedReviews.length === 0
+              ? <div style={{textAlign:"center",padding:"40px 20px",background:bg,border:`1px solid ${border}`,borderRadius:16}}>
+                  <div style={{fontSize:36,marginBottom:10}}>🎮</div>
+                  <div style={{fontSize:14,fontWeight:700,color:text,fontFamily:"'Bitter',serif",marginBottom:8}}>No reviews yet</div>
+                  <div style={{fontSize:11,color:muted,fontFamily:"'Space Mono',monospace",lineHeight:1.7}}>The people you follow haven't posted reviews yet.</div>
+                </div>
+              : reviewCards(feedReviews)
+          }
+        </div>
+      )}
+
+      {/* ── DISCOVER TAB ── */}
+      {subTab === "discover" && (
+        <div style={{display:"flex",flexDirection:"column",gap:24}}>
+
+          {/* Search */}
+          <div>
+            <input placeholder="Search by name or gamer tag..."
               value={searchQuery}
               onChange={e=>{ setSearchQuery(e.target.value); searchPlayers(e.target.value); }}
               style={{width:"100%",background:darkMode?"rgba(0,0,0,0.45)":"rgba(0,0,0,0.05)",border:`1px solid ${border}`,borderRadius:11,padding:"12px 16px",color:text,fontSize:12,fontFamily:"'Space Mono',monospace",boxSizing:"border-box"}}/>
+            {searchQuery.trim().length > 0 && (
+              <div style={{marginTop:12}}>
+                {searching && <div style={{color:muted,fontFamily:"'Space Mono',monospace",fontSize:11}}>Searching...</div>}
+                {!searching && searchResults.length === 0 && <div style={{color:muted,fontFamily:"'Space Mono',monospace",fontSize:11}}>No players found for "{searchQuery}"</div>}
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>{searchResults.map(playerCard)}</div>
+              </div>
+            )}
           </div>
 
-          {/* Search results */}
-          {searchQuery.trim().length > 0 && (
-            <div style={{marginBottom:24}}>
-              <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800,marginBottom:10}}>SEARCH RESULTS</div>
-              {searching && <div style={{color:muted,fontFamily:"'Space Mono',monospace",fontSize:11}}>Searching...</div>}
-              {!searching && searchResults.length === 0 && <div style={{color:muted,fontFamily:"'Space Mono',monospace",fontSize:11}}>No players found for "{searchQuery}"</div>}
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {searchResults.map(p=>(
-                  <div key={p.email} style={{display:"flex",alignItems:"center",gap:12,background:bg,border:`1px solid ${border}`,borderRadius:12,padding:"12px 14px"}}>
-                    <div onClick={()=>onViewProfile(p.email)} style={{cursor:"pointer",width:40,height:40,borderRadius:"50%",background:`hsl(${(p.name?.charCodeAt(0)||0)*7%360},60%,45%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,color:"white",flexShrink:0,fontFamily:"'Space Mono',monospace"}}>
-                      {p.name?.[0]?.toUpperCase()||"?"}
+          {/* Trending games */}
+          {trending.length > 0 && !searchQuery && (
+            <div>
+              <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800,marginBottom:12}}>🔥 TRENDING THIS WEEK</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                {trending.map((g,i)=>(
+                  <div key={g.id} style={{background:bg,border:`1px solid ${border}`,borderRadius:10,padding:"8px 12px",display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:11,fontWeight:700,color:"#a78bfa",fontFamily:"'Space Mono',monospace"}}>#{i+1}</span>
+                    <div>
+                      <div style={{fontSize:11,fontWeight:700,color:text,fontFamily:"'Bitter',serif"}}>{g.name}</div>
+                      <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace"}}>{g.count} review{g.count!==1?"s":""}</div>
                     </div>
-                    <div style={{flex:1}} onClick={()=>onViewProfile(p.email)} >
-                      <div style={{fontSize:13,fontWeight:700,color:text,fontFamily:"'Space Mono',monospace",cursor:"pointer"}}>{p.name}</div>
-                      {p.gamertag && <div style={{fontSize:9,color:"#a78bfa",fontFamily:"'Space Mono',monospace"}}>@{p.gamertag}</div>}
-                      {p.gameName && <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace"}}>Playing {p.gameName}</div>}
-                    </div>
-                    {followingEmails.includes(p.email)
-                      ? <span style={{fontSize:10,color:"#4ade80",fontFamily:"'Space Mono',monospace",fontWeight:700}}>✓ Following</span>
-                      : <button onClick={()=>handleFollow(p.email)} disabled={!!followingInProgress[p.email]}
-                          style={{background:"linear-gradient(135deg,#a78bfa,#7c3aed)",border:"none",borderRadius:8,padding:"7px 14px",color:"white",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace",opacity:followingInProgress[p.email]?0.7:1}}>
-                          {followingInProgress[p.email]?"...":"+ Follow"}
-                        </button>
-                    }
                   </div>
                 ))}
               </div>
@@ -3225,89 +3513,19 @@ function CommunityFeed({ user, darkMode, onViewProfile }) {
           )}
 
           {/* Suggested players */}
-          {suggested.length > 0 && (
+          {!searchQuery && (
             <div>
               <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800,marginBottom:12}}>👥 SUGGESTED PLAYERS</div>
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {suggested.map(p=>(
-                  <div key={p.email} style={{display:"flex",alignItems:"center",gap:12,background:bg,border:`1px solid ${border}`,borderRadius:12,padding:"12px 14px"}}>
-                    <div onClick={()=>onViewProfile(p.email)} style={{cursor:"pointer",width:40,height:40,borderRadius:"50%",background:`hsl(${(p.name?.charCodeAt(0)||0)*7%360},60%,45%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,color:"white",flexShrink:0,fontFamily:"'Space Mono',monospace"}}>
-                      {p.name?.[0]?.toUpperCase()||"?"}
-                    </div>
-                    <div style={{flex:1}} onClick={()=>onViewProfile(p.email)}>
-                      <div style={{fontSize:13,fontWeight:700,color:text,fontFamily:"'Space Mono',monospace",cursor:"pointer"}}>{p.name}</div>
-                      {p.gameName && <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace"}}>Playing {p.gameName}</div>}
-                    </div>
-                    <button onClick={()=>handleFollow(p.email)} disabled={!!followingInProgress[p.email]}
-                      style={{background:"linear-gradient(135deg,#a78bfa,#7c3aed)",border:"none",borderRadius:8,padding:"7px 14px",color:"white",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace",opacity:followingInProgress[p.email]?0.7:1}}>
-                      {followingInProgress[p.email]?"...":"+ Follow"}
-                    </button>
+              {suggested.length === 0
+                ? <div style={{textAlign:"center",padding:"32px 20px",background:bg,border:`1px solid ${border}`,borderRadius:16}}>
+                    <div style={{fontSize:11,color:muted,fontFamily:"'Space Mono',monospace"}}>No suggestions yet — check back as more people join!</div>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {suggested.length === 0 && !searchQuery && (
-            <div style={{textAlign:"center",padding:"40px 20px",background:bg,border:`1px solid ${border}`,borderRadius:16}}>
-              <div style={{fontSize:36,marginBottom:10}}>🔍</div>
-              <div style={{fontSize:13,fontWeight:700,color:text,fontFamily:"'Bitter',serif",marginBottom:8}}>Search for players</div>
-              <div style={{fontSize:11,color:muted,fontFamily:"'Space Mono',monospace",lineHeight:1.7}}>Type a name or gamer tag above to find and follow other players.</div>
+                : <div style={{display:"flex",flexDirection:"column",gap:8}}>{suggested.map(playerCard)}</div>
+              }
             </div>
           )}
         </div>
       )}
-
-      {/* ── FEED TAB ── */}
-      {subTab === "feed" && <>
-      {/* Feed header */}
-      <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace",letterSpacing:2,fontWeight:800,marginBottom:12}}>
-        📋 YOUR FEED {feedReviews.length>0&&`(${feedReviews.length})`}
-      </div>
-
-      {/* Empty states */}
-      {followingEmails.length === 0 && (
-        <div style={{textAlign:"center",padding:"40px 20px",background:bg,border:`1px solid ${border}`,borderRadius:16}}>
-          <div style={{fontSize:36,marginBottom:10}}>👥</div>
-          <div style={{fontSize:14,fontWeight:700,color:text,fontFamily:"'Bitter',serif",marginBottom:8}}>Your feed is empty</div>
-          <div style={{fontSize:11,color:muted,fontFamily:"'Space Mono',monospace",lineHeight:1.7}}>Follow other players to see their reviews here. Check out the players above to get started!</div>
-        </div>
-      )}
-      {followingEmails.length > 0 && feedReviews.length === 0 && (
-        <div style={{textAlign:"center",padding:"40px 20px",background:bg,border:`1px solid ${border}`,borderRadius:16}}>
-          <div style={{fontSize:36,marginBottom:10}}>🎮</div>
-          <div style={{fontSize:14,fontWeight:700,color:text,fontFamily:"'Bitter',serif",marginBottom:8}}>No reviews yet</div>
-          <div style={{fontSize:11,color:muted,fontFamily:"'Space Mono',monospace",lineHeight:1.7}}>The people you follow haven't posted any reviews yet. Check back soon!</div>
-        </div>
-      )}
-
-      {/* Feed items */}
-      <div style={{display:"flex",flexDirection:"column",gap:12}}>
-        {feedReviews.map((r,i) => {
-          const isAnon = r.user_name === "Anonymous";
-          const avatarBg = isAnon ? "rgba(255,255,255,0.15)" : `hsl(${(r.user_name?.charCodeAt(0)||0)*7%360},60%,45%)`;
-          return (
-            <div key={`${r.user_email}-${r.game_id}-${i}`} style={{background:bg,border:`1px solid ${border}`,borderRadius:16,padding:16}}>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-                <div onClick={()=>!isAnon&&onViewProfile(r.user_email)}
-                  style={{cursor:isAnon?"default":"pointer",width:36,height:36,borderRadius:"50%",background:avatarBg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:isAnon?16:13,fontWeight:700,color:"white",flexShrink:0,fontFamily:"'Space Mono',monospace"}}>
-                  {isAnon?"👤":r.user_name?.[0]?.toUpperCase()||"?"}
-                </div>
-                <div style={{flex:1}}>
-                  <div onClick={()=>!isAnon&&onViewProfile(r.user_email)} style={{cursor:isAnon?"default":"pointer",fontSize:12,fontWeight:700,color:text,fontFamily:"'Space Mono',monospace"}}>{r.user_name}</div>
-                  <div style={{fontSize:9,color:muted,fontFamily:"'Space Mono',monospace"}}>{new Date(r.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
-                </div>
-                <div style={{display:"flex",gap:1}}>{[1,2,3,4,5].map(s=><span key={s} style={{fontSize:12,color:s<=r.rating?"#fbbf24":"rgba(255,255,255,0.12)"}}>★</span>)}</div>
-              </div>
-              <div style={{background:darkMode?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.04)",borderRadius:10,padding:"10px 12px",marginBottom:r.review_text?10:0}}>
-                <div style={{fontSize:13,fontWeight:700,color:text,fontFamily:"'Bitter',serif"}}>{r.game_name}</div>
-                {r.time_spent && <div style={{fontSize:10,color:muted,fontFamily:"'Space Mono',monospace",marginTop:3}}>⏱ {r.time_spent}</div>}
-              </div>
-              {r.review_text && <div style={{fontSize:12,color:darkMode?"rgba(255,255,255,0.65)":"#444",fontFamily:"'Space Mono',monospace",lineHeight:1.7}}>{r.review_text}</div>}
-            </div>
-          );
-        })}
-      </div>
-      </>}
     </div>
   );
 }
