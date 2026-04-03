@@ -2476,7 +2476,88 @@ function EditProfileModal({ user, onClose, onSave }) {
   );
 }
 
-function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile, onOpenMessages }) {
+function FollowListModal({ title, emails, currentUser, darkMode, onViewProfile, onClose }) {
+  const [profiles, setProfiles] = useState({});
+  const [followingSet, setFollowingSet] = useState(new Set());
+  const [busy, setBusy] = useState({});
+  const bg = darkMode ? "#0d0d18" : "#fff";
+  const border = darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.08)";
+  const text = darkMode ? "white" : "#0f0f1a";
+  const muted = darkMode ? "rgba(255,255,255,0.35)" : "#666";
+
+  useEffect(() => {
+    if (!emails.length) return;
+    batchProfiles(emails).then(setProfiles);
+    if (currentUser) {
+      getFollowing(currentUser.email).then(data => {
+        setFollowingSet(new Set((data || []).map(f => f.following_email)));
+      });
+    }
+  }, [emails.join(",")]);
+
+  const handleFollow = async (email) => {
+    if (!currentUser || email === currentUser.email) return;
+    setBusy(b => ({...b, [email]: true}));
+    const isNow = followingSet.has(email);
+    if (isNow) {
+      await unfollowUser(currentUser.email, email);
+      setFollowingSet(s => { const n = new Set(s); n.delete(email); return n; });
+    } else {
+      await followUser(currentUser.email, email);
+      setFollowingSet(s => new Set([...s, email]));
+    }
+    setBusy(b => ({...b, [email]: false}));
+  };
+
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(10px)"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:bg,border:`1px solid ${border}`,borderRadius:20,width:"100%",maxWidth:420,maxHeight:"75vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        <div style={{padding:"16px 18px",borderBottom:`1px solid ${border}`,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+          <div style={{fontSize:14,fontWeight:700,color:text,fontFamily:"'Bitter',serif"}}>{title}</div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:muted,fontSize:20,cursor:"pointer",lineHeight:1}}>✕</button>
+        </div>
+        <div style={{overflowY:"auto",padding:14,display:"flex",flexDirection:"column",gap:10}}>
+          {emails.length === 0 && (
+            <div style={{textAlign:"center",padding:"32px 16px",color:muted,fontFamily:"'Space Mono',monospace",fontSize:12}}>Nobody here yet</div>
+          )}
+          {emails.map(email => {
+            const p = profiles[email];
+            const hasEmoji = !!p?.avatar_emoji;
+            const avatarBg = p?.avatar_color || `hsl(${(email.charCodeAt(0)||0)*7%360},60%,40%)`;
+            const name = p?.gamer_tag || email.split("@")[0];
+            const isSelf = currentUser?.email === email;
+            const isFollowed = followingSet.has(email);
+            return (
+              <div key={email} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:darkMode?"rgba(255,255,255,0.03)":"rgba(0,0,0,0.03)",borderRadius:12,border:`1px solid ${border}`}}>
+                <div onClick={()=>{ onClose(); onViewProfile(email); }}
+                  style={{cursor:"pointer",width:42,height:42,borderRadius:"50%",background:avatarBg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:hasEmoji?20:15,fontWeight:700,color:"white",flexShrink:0,border:"2px solid rgba(167,139,250,0.25)"}}>
+                  {hasEmoji ? p.avatar_emoji : name[0]?.toUpperCase()||"?"}
+                </div>
+                <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>{ onClose(); onViewProfile(email); }}>
+                  <div style={{fontSize:13,fontWeight:700,color:text,fontFamily:"'Space Mono',monospace",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</div>
+                  {p?.gamer_tag && <div style={{fontSize:9,color:"#a78bfa",fontFamily:"'Space Mono',monospace"}}>@{p.gamer_tag}</div>}
+                </div>
+                {currentUser && !isSelf && (
+                  isFollowed
+                    ? <button onClick={()=>handleFollow(email)} disabled={!!busy[email]}
+                        style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:8,padding:"6px 12px",color:"rgba(255,255,255,0.6)",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace",flexShrink:0,opacity:busy[email]?0.5:1}}>
+                        {busy[email]?"...":"✓ Following"}
+                      </button>
+                    : <button onClick={()=>handleFollow(email)} disabled={!!busy[email]}
+                        style={{background:"linear-gradient(135deg,#a78bfa,#7c3aed)",border:"none",borderRadius:8,padding:"6px 12px",color:"white",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace",flexShrink:0,opacity:busy[email]?0.5:1}}>
+                        {busy[email]?"...":"+ Follow"}
+                      </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile, onOpenMessages, onViewProfile }) {
   const [profile, setProfile] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [followers, setFollowers] = useState([]);
@@ -2487,6 +2568,7 @@ function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile, on
   const [copied, setCopied] = useState(false);
   const [friendRequest, setFriendRequest] = useState(null); // null | {status, from_email, to_email}
   const [friendBusy, setFriendBusy] = useState(false);
+  const [followListModal, setFollowListModal] = useState(null); // null | "followers" | "following"
   const isOwnProfile = currentUser?.email === profileEmail;
 
   useEffect(() => {
@@ -2656,13 +2738,28 @@ function UserProfilePage({ profileEmail, currentUser, onClose, onEditProfile, on
 
           {/* STATS ROW */}
           <div style={{display:"flex",gap:0,marginBottom:22,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,overflow:"hidden"}}>
-            {[["💬",reviews.length,"Reviews"],["👥",followers.length,"Followers"],["➕",following.length,"Following"]].map(([icon,val,lbl],i,arr)=>(
-              <div key={lbl} style={{flex:1,textAlign:"center",padding:"14px 8px",borderRight:i<arr.length-1?"1px solid rgba(255,255,255,0.07)":"none"}}>
-                <div style={{fontSize:22,fontWeight:900,color:avatarColor,fontFamily:"'Space Mono',monospace",lineHeight:1}}>{val}</div>
-                <div style={{fontSize:9,color:"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",marginTop:4,letterSpacing:0.5}}>{icon} {lbl}</div>
+            {[["💬",reviews.length,"Reviews",null],["👥",followers.length,"Followers","followers"],["➕",following.length,"Following","following"]].map(([icon,val,lbl,modal],i,arr)=>(
+              <div key={lbl} onClick={modal?()=>setFollowListModal(modal):undefined}
+                style={{flex:1,textAlign:"center",padding:"14px 8px",borderRight:i<arr.length-1?"1px solid rgba(255,255,255,0.07)":"none",cursor:modal?"pointer":"default",transition:"background .15s"}}
+                onMouseEnter={e=>{ if(modal) e.currentTarget.style.background="rgba(167,139,250,0.08)"; }}
+                onMouseLeave={e=>{ if(modal) e.currentTarget.style.background="transparent"; }}>
+                <div style={{fontSize:22,fontWeight:900,color:modal?avatarColor:avatarColor,fontFamily:"'Space Mono',monospace",lineHeight:1}}>{val}</div>
+                <div style={{fontSize:9,color:modal?"rgba(167,139,250,0.6)":"rgba(255,255,255,0.35)",fontFamily:"'Space Mono',monospace",marginTop:4,letterSpacing:0.5}}>{icon} {lbl}{modal?" ↗":""}</div>
               </div>
             ))}
           </div>
+
+          {/* FOLLOW LIST MODAL */}
+          {followListModal && (
+            <FollowListModal
+              title={followListModal === "followers" ? `👥 ${followers.length} Followers` : `➕ ${following.length} Following`}
+              emails={followListModal === "followers" ? followers.map(f=>f.follower_email) : following.map(f=>f.following_email)}
+              currentUser={currentUser}
+              darkMode={true}
+              onViewProfile={onViewProfile || (() => {})}
+              onClose={()=>setFollowListModal(null)}
+            />
+          )}
 
           {/* ACHIEVEMENTS */}
           <div style={{marginBottom:24}}>
@@ -4361,7 +4458,7 @@ export default function App() {
       {showPaywall && <PaywallModal user={user} onClose={()=>setShowPaywall(false)} onSuccess={handlePaid}/>}
       <GameModal game={selected} onClose={()=>setSelected(null)} currentUser={user} darkMode={darkMode}/>
       {showEditProfile && user && <EditProfileModal user={user} onClose={()=>setShowEditProfile(false)} onSave={p=>setUserProfile(p)}/>}
-      {viewProfile && user && <UserProfilePage profileEmail={viewProfile} currentUser={user} onClose={()=>setViewProfile(null)} onEditProfile={()=>{setViewProfile(null);setShowEditProfile(true);}} onOpenMessages={(email)=>{ setViewProfile(null); setMessagesRecipient(email); setShowMessages(true); }}/>}
+      {viewProfile && user && <UserProfilePage profileEmail={viewProfile} currentUser={user} onClose={()=>setViewProfile(null)} onEditProfile={()=>{setViewProfile(null);setShowEditProfile(true);}} onOpenMessages={(email)=>{ setViewProfile(null); setMessagesRecipient(email); setShowMessages(true); }} onViewProfile={setViewProfile}/>}
       {showMessages && user && <MessagesModal currentUser={user} initialRecipient={messagesRecipient} onClose={()=>{ setShowMessages(false); setMessagesRecipient(null); }}/>}
       {showFAQ && <FAQModal onClose={()=>setShowFAQ(false)} darkMode={darkMode}/>}
       {showPrivacy && <PrivacyModal onClose={()=>setShowPrivacy(false)}/>}
