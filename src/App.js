@@ -3879,7 +3879,7 @@ export default function App() {
 
         {/* Filter Toggle — hidden in Kids Mode */}
         {access && !kidsMode && (
-          <div style={{maxWidth:900,margin:"0 auto 14px",padding:"0 16px"}}>
+          <div style={{maxWidth:1400,margin:"0 auto 14px",padding:"0 16px"}}>
             <button onClick={()=>setShowFilters(!showFilters)} style={{background:darkMode?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.07)",border:`1px solid ${darkMode?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.2)"}`,borderRadius:11,padding:"9px 16px",color:darkMode?"rgba(255,255,255,0.6)":"#111111",cursor:"pointer",fontSize:11,fontFamily:"'Space Mono',monospace",display:"flex",alignItems:"center",gap:8}}>
               ⚙ Filters {showFilters?"▲":"▼"}
             </button>
@@ -3912,7 +3912,7 @@ export default function App() {
 
         {/* Locked filter teaser for expired */}
         {!access && status==="expired" && (
-          <div style={{maxWidth:900,margin:"0 auto 14px",padding:"0 16px"}}>
+          <div style={{maxWidth:1400,margin:"0 auto 14px",padding:"0 16px"}}>
             <div onClick={()=>setShowPaywall(true)} style={{background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.25)",borderRadius:13,padding:"12px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
               <span style={{fontSize:18}}>🔒</span>
               <div style={{flex:1}}>
@@ -3926,7 +3926,7 @@ export default function App() {
 
         {/* Sort & count */}
         {hasLoaded && (
-          <div style={{maxWidth:900,margin:"0 auto 12px",padding:"0 16px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+          <div style={{maxWidth:1400,margin:"0 auto 12px",padding:"0 16px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
             <div style={{fontSize:10,color:darkMode?"rgba(255,255,255,0.3)":"#222222",fontFamily:"'Space Mono',monospace",fontWeight:700}}>{total.toLocaleString()} games</div>
             {!kidsMode && (
               <div style={{display:"flex",gap:5}}>
@@ -3948,7 +3948,7 @@ export default function App() {
         )}
 
         {/* Content */}
-        <div style={{maxWidth:900,margin:"0 auto",padding:"0 16px"}}>
+        <div style={{maxWidth:1400,margin:"0 auto",padding:"0 16px"}}>
           {!hasLoaded && !loading && (
             <div>
               <RecommendationsSection user={user} onGameClick={setSelected} darkMode={darkMode}/>
@@ -3961,8 +3961,8 @@ export default function App() {
           )}
 
           {loading && (
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:13,marginBottom:26}}>
-              {[...Array(8)].map((_,i)=>(
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:13,marginBottom:26}}>
+              {[...Array(12)].map((_,i)=>(
                 <div key={i} style={{borderRadius:18,overflow:"hidden",background:darkMode?"#0d0d18":"#ffffff",border:`1px solid ${darkMode?"rgba(255,255,255,0.07)":"rgba(0,0,0,0.08)"}`}}>
                   <div className="skeleton" style={{height:3}}/>
                   <div className="skeleton" style={{height:122}}/>
@@ -3982,7 +3982,7 @@ export default function App() {
           {error && <div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:12,padding:16,marginBottom:16,color:"#fca5a5",fontFamily:"'Space Mono',monospace",fontSize:11,lineHeight:1.7}}>⚠️ {error}</div>}
 
           {!loading && games.length>0 && (
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:13,marginBottom:26}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:13,marginBottom:26}}>
               {games.map((g,i)=>(
                 <div key={g.id} className="card-anim" style={{animationDelay:`${i*.04}s`}}>
                   <GameCard game={g} onClick={setSelected} locked={false} darkMode={darkMode}
