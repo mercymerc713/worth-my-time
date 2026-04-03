@@ -1203,7 +1203,7 @@ function PaywallModal({ user, onClose, onSuccess }) {
                   </div>
                 ))}
               </div>
-              <Btn onClick={()=>{ window.open(STRIPE_PAYMENT_LINK,"_blank"); setStripeOpened(true); }} variant="gold" style={{width:"100%",fontSize:15,padding:"14px",borderRadius:13}}>
+              <Btn onClick={()=>{ const link = user?.email ? `${STRIPE_PAYMENT_LINK}?prefilled_email=${encodeURIComponent(user.email)}` : STRIPE_PAYMENT_LINK; window.open(link,"_blank"); setStripeOpened(true); }} variant="gold" style={{width:"100%",fontSize:15,padding:"14px",borderRadius:13}}>
                 Pay {PRICE} Securely on Stripe →
               </Btn>
               {stripeOpened && (

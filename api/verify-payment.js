@@ -1,11 +1,6 @@
 // Vercel Serverless Function — api/verify-payment.js
 // Checks Stripe for a recent successful payment by customer email,
 // then marks the user as paid in Supabase.
-//
-// Required Vercel environment variables:
-//   STRIPE_SECRET_KEY      — Stripe secret key (sk_live_...)
-//   SUPABASE_URL           — https://bibpoybwclvifqmouxsf.supabase.co
-//   SUPABASE_SERVICE_KEY   — Supabase service role key (NOT anon key)
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
@@ -26,56 +21,59 @@ export default async function handler(req, res) {
   const normalizedEmail = email.toLowerCase().trim();
 
   try {
-    // Search Stripe Payment Intents for this customer email (last 100)
-    const stripeRes = await fetch(
-      `https://api.stripe.com/v1/payment_intents?limit=100`,
+    let paid = false;
+
+    // 1. Search Stripe Checkout Sessions by email (most reliable for Payment Links)
+    const sessionsRes = await fetch(
+      `https://api.stripe.com/v1/checkout/sessions?` +
+      `customer_details[email]=${encodeURIComponent(normalizedEmail)}&status=complete&limit=10`,
       { headers: { Authorization: `Bearer ${stripeKey}` } }
     );
-
-    if (!stripeRes.ok) {
-      return res.status(502).json({ error: "Could not reach Stripe" });
+    if (sessionsRes.ok) {
+      const sessionsData = await sessionsRes.json();
+      if ((sessionsData?.data || []).length > 0) paid = true;
     }
 
-    const stripeData = await stripeRes.json();
-    const intents = stripeData?.data || [];
-
-    // Look for a succeeded payment matching this email
-    const paid = intents.some(pi => {
-      if (pi.status !== "succeeded") return false;
-      const piEmail = (
-        pi.receipt_email ||
-        pi.customer_details?.email ||
-        pi.metadata?.email ||
-        ""
-      ).toLowerCase().trim();
-      return piEmail === normalizedEmail;
-    });
-
+    // 2. Fallback: search Stripe customers by email, then check their charges
     if (!paid) {
-      // Also check Stripe Checkout Sessions (for Payment Links)
-      const sessionsRes = await fetch(
-        `https://api.stripe.com/v1/checkout/sessions?limit=100&status=complete`,
+      const custRes = await fetch(
+        `https://api.stripe.com/v1/customers/search?query=email:'${normalizedEmail}'&limit=5`,
         { headers: { Authorization: `Bearer ${stripeKey}` } }
       );
+      if (custRes.ok) {
+        const custData = await custRes.json();
+        const customers = custData?.data || [];
+        for (const customer of customers) {
+          const chargesRes = await fetch(
+            `https://api.stripe.com/v1/charges?customer=${customer.id}&limit=10`,
+            { headers: { Authorization: `Bearer ${stripeKey}` } }
+          );
+          if (chargesRes.ok) {
+            const chargesData = await chargesRes.json();
+            const succeeded = (chargesData?.data || []).some(c => c.status === "succeeded");
+            if (succeeded) { paid = true; break; }
+          }
+        }
+      }
+    }
 
-      if (sessionsRes.ok) {
-        const sessionsData = await sessionsRes.json();
-        const sessions = sessionsData?.data || [];
-        const paidViaCheckout = sessions.some(s => {
-          const sEmail = (
-            s.customer_details?.email ||
-            s.customer_email ||
-            ""
-          ).toLowerCase().trim();
+    // 3. Fallback: scan recent checkout sessions for email match (catches edge cases)
+    if (!paid) {
+      const recentRes = await fetch(
+        `https://api.stripe.com/v1/checkout/sessions?status=complete&limit=100`,
+        { headers: { Authorization: `Bearer ${stripeKey}` } }
+      );
+      if (recentRes.ok) {
+        const recentData = await recentRes.json();
+        paid = (recentData?.data || []).some(s => {
+          const sEmail = (s.customer_details?.email || s.customer_email || "").toLowerCase().trim();
           return sEmail === normalizedEmail;
         });
-
-        if (!paidViaCheckout) {
-          return res.status(200).json({ paid: false });
-        }
-      } else {
-        return res.status(200).json({ paid: false });
       }
+    }
+
+    if (!paid) {
+      return res.status(200).json({ paid: false });
     }
 
     // Payment confirmed — mark as paid in Supabase
