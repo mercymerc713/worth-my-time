@@ -5,11 +5,13 @@
   "id": "/",
   "start_url": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
   "background_color": "#07070f",
   "theme_color": "#07070f",
   "orientation": "portrait-primary",
   "scope": "/",
   "lang": "en",
+  "dir": "ltr",
   "categories": ["games", "entertainment", "lifestyle"],
   "icons": [
     {
@@ -47,6 +49,22 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshot-mobile.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Discover games scored for your schedule"
+    },
+    {
+      "src": "/screenshot-desktop.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Worth My Time? — game discovery dashboard"
     }
   ],
   "prefer_related_applications": false
