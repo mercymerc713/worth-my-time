@@ -76,16 +76,16 @@ export default async function handler(req, res) {
       return res.status(200).json({ paid: false });
     }
 
-    // Payment confirmed — mark as paid in Supabase
+    // Payment confirmed — mark as paid in Supabase (ilike = case-insensitive)
     const patchRes = await fetch(
-      `${supabaseUrl}/rest/v1/accounts?email=eq.${encodeURIComponent(normalizedEmail)}`,
+      `${supabaseUrl}/rest/v1/accounts?email=ilike.${encodeURIComponent(normalizedEmail)}`,
       {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           "apikey": serviceKey,
           "Authorization": `Bearer ${serviceKey}`,
-          "Prefer": "return=minimal",
+          "Prefer": "return=representation",
         },
         body: JSON.stringify({ is_paid: true, paid_at: Date.now() }),
       }
@@ -93,6 +93,16 @@ export default async function handler(req, res) {
 
     if (!patchRes.ok) {
       return res.status(500).json({ error: "Could not update account" });
+    }
+
+    const updated = await patchRes.json();
+    if (!Array.isArray(updated) || updated.length === 0) {
+      // Account missing — create it as paid so they're never blocked
+      await fetch(`${supabaseUrl}/rest/v1/accounts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": serviceKey, "Authorization": `Bearer ${serviceKey}`, "Prefer": "resolution=merge-duplicates" },
+        body: JSON.stringify({ email: normalizedEmail, is_paid: true, paid_at: Date.now() }),
+      });
     }
 
     return res.status(200).json({ paid: true });
