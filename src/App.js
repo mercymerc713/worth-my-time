@@ -3653,6 +3653,27 @@ export default function App() {
         setUser(user);
         getProfile(user.email).then(p => setUserProfile(p));
         getUnreadCount(user.email).then(n => setUnreadMessages(n));
+
+        // Silent background payment check — catches webhook failures automatically.
+        // If Stripe shows a completed payment but Supabase isn't marked paid yet, fix it now.
+        if (!user.isPaid) {
+          fetch("/api/verify-payment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: cached.email }),
+          }).then(async r => {
+            if (!r.ok) return;
+            const d = await r.json();
+            if (d?.paid) {
+              const confirmed = await sbGetAccount(cached.email);
+              if (confirmed?.is_paid) {
+                const updated = accountToUser(confirmed);
+                await store.set("wmt_user", updated);
+                setUser(updated);
+              }
+            }
+          }).catch(() => {}); // never block app startup
+        }
       }
       setAppReady(true);
     });
