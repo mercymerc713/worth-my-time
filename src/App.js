@@ -3447,7 +3447,7 @@ export default function App() {
       const dateRange = YEAR_RANGES[f.year] || `2000-01-01,${todayDate}`;
       const p = new URLSearchParams({
         key: RAWG_KEY,
-        page_size: 20,
+        page_size: 40,
         page: pg,
         ordering: SORT_MAP[sort] || "-released",
         dates: dateRange,
@@ -3525,7 +3525,10 @@ export default function App() {
   // Auto-load a random page of top-rated games on first login
   useEffect(() => {
     if (!user || !access) return;
-    const randomPage = Math.floor(Math.random() * 20) + 1;
+    // Kids Mode: RAWG's E/E10+ pool is much smaller — stay within pages 1-5
+    // to avoid empty pages. Normal mode can use wider random range.
+    const maxPage = kidsModeRef.current ? 5 : 20;
+    const randomPage = Math.floor(Math.random() * maxPage) + 1;
     fetchGames("", filters, "rating", randomPage);
   }, [user?.email, access]);
 
@@ -3630,8 +3633,7 @@ export default function App() {
       ];
       const results = (data.results||[]).filter(g => {
         if (!g.background_image) return false;
-        // STRICT: only allow ESRB "Everyone" (1) or "Everyone 10+" (2)
-        // Reject unrated, Teen, Mature, Adults Only — RAWG's API filter is unreliable
+        // Strictly require E(1) or E10+(2) — reject unrated, Teen, Mature, Adults Only
         const esrbId = g.esrb_rating?.id;
         if (!esrbId || esrbId > 2) return false;
         const genres = (g.genres||[]).map(g=>g.slug);
