@@ -58,21 +58,36 @@ function verifyStripeSignature(rawBody, sigHeader, secret) {
 async function markUserAsPaid(email) {
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceKey  = process.env.SUPABASE_SERVICE_KEY;
+  const normalized  = email.toLowerCase().trim();
 
+  // Use ilike for case-insensitive match — eq silently matches 0 rows if case differs
   const res = await fetch(
-    `${supabaseUrl}/rest/v1/accounts?email=eq.${encodeURIComponent(email.toLowerCase().trim())}`,
+    `${supabaseUrl}/rest/v1/accounts?email=ilike.${encodeURIComponent(normalized)}`,
     {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
         "apikey": serviceKey,
         "Authorization": `Bearer ${serviceKey}`,
-        "Prefer": "return=minimal",
+        "Prefer": "return=representation",
       },
       body: JSON.stringify({ is_paid: true, paid_at: Date.now() }),
     }
   );
-  return res.ok;
+  if (!res.ok) { console.error("Supabase PATCH failed:", await res.text()); return false; }
+  const updated = await res.json();
+  if (!Array.isArray(updated) || updated.length === 0) {
+    // Account doesn't exist yet — create it as paid
+    console.warn("No account found for", normalized, "— creating paid account");
+    const ins = await fetch(`${supabaseUrl}/rest/v1/accounts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": serviceKey, "Authorization": `Bearer ${serviceKey}`, "Prefer": "resolution=merge-duplicates" },
+      body: JSON.stringify({ email: normalized, is_paid: true, paid_at: Date.now() }),
+    });
+    return ins.ok;
+  }
+  console.log("Marked as paid:", normalized, `(${updated.length} row updated)`);
+  return true;
 }
 
 export default async function handler(req, res) {
