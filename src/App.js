@@ -2829,10 +2829,18 @@ function MessagesModal({ currentUser, initialRecipient=null, onClose }) {
   const handleSend = async () => {
     if (!draft.trim() || !activeThread || sending) return;
     setSending(true);
-    const ok = await sendMessage(currentUser.email, activeThread, draft.trim());
+    const content = draft.trim();
+    const ok = await sendMessage(currentUser.email, activeThread, content);
     if (ok) {
-      setMessages(m => [...m, { from_email: currentUser.email, to_email: activeThread, content: draft.trim(), created_at: new Date().toISOString() }]);
+      setMessages(m => [...m, { from_email: currentUser.email, to_email: activeThread, content, created_at: new Date().toISOString() }]);
       setDraft("");
+      // Fire-and-forget email notification to recipient
+      const fromName = getDisplayName(currentUser.email) || currentUser.name || currentUser.email.split("@")[0];
+      fetch("/api/notify-message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to_email: activeThread, from_name: fromName, preview: content }),
+      }).catch(() => {});
     }
     setSending(false);
   };
