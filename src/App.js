@@ -3479,9 +3479,7 @@ export default function App() {
         if (!g.background_image) return false;
         if (kidsModeRef.current) {
           const esrbId = g.esrb_rating?.id;
-          // Only block games that are explicitly rated Teen(3), Mature(4), or Adults Only(5)
-          // Games with no ESRB rating are allowed through — API already filters to E/E10+
-          if (esrbId && esrbId > 2) return false;
+          if (!esrbId || esrbId > 2) return false;
         }
         return true;
       });
@@ -3527,7 +3525,10 @@ export default function App() {
   // Auto-load a random page of top-rated games on first login
   useEffect(() => {
     if (!user || !access) return;
-    const randomPage = Math.floor(Math.random() * 20) + 1;
+    // Kids Mode: RAWG's E/E10+ pool is much smaller — stay within pages 1-5
+    // to avoid empty pages. Normal mode can use wider random range.
+    const maxPage = kidsModeRef.current ? 5 : 20;
+    const randomPage = Math.floor(Math.random() * maxPage) + 1;
     fetchGames("", filters, "rating", randomPage);
   }, [user?.email, access]);
 
@@ -3632,9 +3633,9 @@ export default function App() {
       ];
       const results = (data.results||[]).filter(g => {
         if (!g.background_image) return false;
-        // Block explicitly rated Teen(3), Mature(4), Adults Only(5) — allow unrated (API already filtered)
+        // Strictly require E(1) or E10+(2) — reject unrated, Teen, Mature, Adults Only
         const esrbId = g.esrb_rating?.id;
-        if (esrbId && esrbId > 2) return false;
+        if (!esrbId || esrbId > 2) return false;
         const genres = (g.genres||[]).map(g=>g.slug);
         if (genres.some(s => BLOCKED_GENRES.includes(s))) return false;
         const title = (g.name||"").toLowerCase();
@@ -3687,7 +3688,7 @@ export default function App() {
       const data = await res.json();
       let results = (data.results||[]).filter(g=>g.background_image);
       if (kidsModeRef.current) {
-        results = results.filter(g => { const id = g.esrb_rating?.id; return !id || id <= 2; });
+        results = results.filter(g => { const id = g.esrb_rating?.id; return id === 1 || id === 2; });
       }
       if (results.length > 0) setSelected(results[Math.floor(Math.random()*results.length)]);
       setGames(results);
