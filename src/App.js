@@ -3447,7 +3447,7 @@ export default function App() {
       const dateRange = YEAR_RANGES[f.year] || `2000-01-01,${todayDate}`;
       const p = new URLSearchParams({
         key: RAWG_KEY,
-        page_size: 20,
+        page_size: 40,
         page: pg,
         ordering: SORT_MAP[sort] || "-released",
         dates: dateRange,
@@ -3479,7 +3479,9 @@ export default function App() {
         if (!g.background_image) return false;
         if (kidsModeRef.current) {
           const esrbId = g.esrb_rating?.id;
-          if (!esrbId || esrbId > 2) return false;
+          // Only block games that are explicitly rated Teen(3), Mature(4), or Adults Only(5)
+          // Games with no ESRB rating are allowed through — API already filters to E/E10+
+          if (esrbId && esrbId > 2) return false;
         }
         return true;
       });
@@ -3630,10 +3632,9 @@ export default function App() {
       ];
       const results = (data.results||[]).filter(g => {
         if (!g.background_image) return false;
-        // STRICT: only allow ESRB "Everyone" (1) or "Everyone 10+" (2)
-        // Reject unrated, Teen, Mature, Adults Only — RAWG's API filter is unreliable
+        // Block explicitly rated Teen(3), Mature(4), Adults Only(5) — allow unrated (API already filtered)
         const esrbId = g.esrb_rating?.id;
-        if (!esrbId || esrbId > 2) return false;
+        if (esrbId && esrbId > 2) return false;
         const genres = (g.genres||[]).map(g=>g.slug);
         if (genres.some(s => BLOCKED_GENRES.includes(s))) return false;
         const title = (g.name||"").toLowerCase();
@@ -3686,7 +3687,7 @@ export default function App() {
       const data = await res.json();
       let results = (data.results||[]).filter(g=>g.background_image);
       if (kidsModeRef.current) {
-        results = results.filter(g => { const id = g.esrb_rating?.id; return id === 1 || id === 2; });
+        results = results.filter(g => { const id = g.esrb_rating?.id; return !id || id <= 2; });
       }
       if (results.length > 0) setSelected(results[Math.floor(Math.random()*results.length)]);
       setGames(results);
