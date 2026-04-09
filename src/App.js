@@ -3954,53 +3954,55 @@ export default function App() {
     setActiveParentFilter(null);
     setMinutes(String(m));
 
-    // Map session time → genre pool + max total playtime cap (hours, from RAWG)
-    // maxHrs is used client-side to reject games RAWG says take longer than the cap
+    // minT = minimum T score to include. T is computed from game genres:
+    // pure arcade/card/puzzle → T ~89-95, indie → T ~75-81, action → T ~67-73, RPG → T ~42-48
+    // This filters out hybrid games (e.g. Arcade+RPG) that have long sessions
     let timeGenres = "";
     let ordering = "-rating";
     let maxHrs = null;
+    let minT = 0;
 
     if (m <= 15) {
-      // Pure arcade/card — pick-up-and-play, complete in minutes
-      timeGenres = "arcade,card-games";
+      timeGenres = "arcade,card-games,puzzle";
       ordering = "-rating";
       maxHrs = 3;
+      minT = 88; // pure short-genre games only
     } else if (m <= 30) {
-      // Puzzle, quick sports, racing — natural 15-30 min loops
       timeGenres = "puzzle,sports,racing,arcade,card-games";
       ordering = "-rating";
       maxHrs = 8;
+      minT = 82;
     } else if (m <= 45) {
-      // Fighting, platformer — one match / one level = ~30-45 min
       timeGenres = "fighting,platformer,puzzle,sports,racing";
       ordering = "-rating";
       maxHrs = 12;
+      minT = 76;
     } else if (m <= 60) {
-      // Indie and shooter — designed for 45-60 min sessions
       timeGenres = "indie,shooter,platformer,fighting";
       ordering = "-rating";
       maxHrs = 20;
+      minT = 65;
     } else if (m <= 90) {
-      // Action/adventure — 60-90 min per play
       timeGenres = "action,adventure,indie";
       ordering = "-rating";
       maxHrs = 40;
+      minT = 50;
     } else if (m <= 120) {
-      // Deeper games — need 90+ min to feel progress
       timeGenres = "action,adventure,action-adventure";
       ordering = "-metacritic";
       maxHrs = null;
+      minT = 0;
     } else {
-      // Long-haul: RPG, strategy, simulation
       timeGenres = "role-playing-games-rpg,strategy,simulation";
       ordering = "-metacritic";
       maxHrs = null;
+      minT = 0;
     }
 
     setSearch("");
     setPage(1);
     setFilters(DEFAULT_FILTERS);
-    fetchGamesWithTime(timeGenres, ordering, maxHrs);
+    fetchGamesWithTime(timeGenres, ordering, maxHrs, minT);
   };
 
   // Clear time search — go fully back to landing screen
@@ -4057,14 +4059,14 @@ export default function App() {
     setLoading(false);
   }, []);
 
-  const fetchGamesWithTime = useCallback(async (timeGenres, ordering="-rating", maxHrs=null) => {
+  const fetchGamesWithTime = useCallback(async (timeGenres, ordering="-rating", maxHrs=null, minT=0) => {
     setLoading(true); setError("");
     try {
       const todayDate = new Date().toISOString().split("T")[0];
-      // Fetch extra results so client-side filtering has enough to work with
+      // Fetch 80 so client-side filtering still leaves plenty of results
       const params = new URLSearchParams({
         key: RAWG_KEY,
-        page_size: 60,
+        page_size: 80,
         page: 1,
         ordering,
         genres: timeGenres,
@@ -4077,10 +4079,18 @@ export default function App() {
       let results = (data.results || []).filter(g =>
         g.background_image && g.released && g.released <= todayDate
       );
-      // Client-side filter: RAWG's playtime field (hours) — only reject games
-      // that explicitly exceed our cap; 0 means no data so we keep those
+      // Filter by RAWG playtime (total hours) — skip games with no data (playtime=0)
       if (maxHrs !== null) {
         results = results.filter(g => !g.playtime || g.playtime <= maxHrs);
+      }
+      // Filter by minimum T score — catches hybrid genres (e.g. Arcade+RPG)
+      // that have longer sessions than the time bucket expects
+      if (minT > 0) {
+        results = results.filter(g => computeScores(g).t >= minT);
+      }
+      // Sort by T score descending so best session-time matches appear first
+      if (minT > 0) {
+        results = results.sort((a, b) => computeScores(b).t - computeScores(a).t);
       }
       setGames(results);
       setTotal(data.count || 0);
