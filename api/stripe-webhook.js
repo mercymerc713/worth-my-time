@@ -1,20 +1,9 @@
 // Vercel Serverless Function — api/stripe-webhook.js
-// Receives Stripe webhook events and marks users as paid in Supabase.
-//
-// Setup steps:
-// 1. In your Vercel dashboard, add environment variables:
-//    STRIPE_WEBHOOK_SECRET  — from Stripe Dashboard > Webhooks > your endpoint > Signing secret
-//    SUPABASE_URL           — https://bibpoybwclvifqmouxsf.supabase.co
-//    SUPABASE_SERVICE_KEY   — your Supabase service role key (NOT the anon key)
-//
-// 2. In Stripe Dashboard > Webhooks, add endpoint:
-//    URL: https://your-domain.vercel.app/api/stripe-webhook
-//    Events to listen for: checkout.session.completed
+// Uses the official Stripe SDK for reliable webhook signature verification.
 
-import crypto from "crypto";
+import Stripe from "stripe";
 
-// Disable Vercel's default body parser so we receive the raw bytes
-// needed for Stripe signature verification.
+// Disable Vercel's default body parser — Stripe needs the raw bytes to verify signatures.
 export const config = { api: { bodyParser: false } };
 
 async function readRawBody(req) {
@@ -23,44 +12,12 @@ async function readRawBody(req) {
   return Buffer.concat(chunks);
 }
 
-function verifyStripeSignature(rawBody, sigHeader, secret) {
-  // Stripe signature header format: t=timestamp,v1=sig1,v1=sig2,...
-  const parts = sigHeader.split(",");
-  const timestampPart = parts.find(p => p.startsWith("t="));
-  if (!timestampPart) return false;
-  const timestamp = timestampPart.split("=")[1];
-
-  const signatures = parts
-    .filter(p => p.startsWith("v1="))
-    .map(p => p.slice(3));
-
-  const signedPayload = `${timestamp}.${rawBody.toString("utf8")}`;
-  const expected = crypto
-    .createHmac("sha256", secret)
-    .update(signedPayload)
-    .digest("hex");
-
-  // Reject if timestamp is older than 5 minutes (replay attack protection)
-  if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return false;
-
-  return signatures.some(sig => {
-    try {
-      return crypto.timingSafeEqual(
-        Buffer.from(sig, "hex"),
-        Buffer.from(expected, "hex")
-      );
-    } catch {
-      return false;
-    }
-  });
-}
-
 async function markUserAsPaid(email) {
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceKey  = process.env.SUPABASE_SERVICE_KEY;
   const normalized  = email.toLowerCase().trim();
 
-  // Use ilike for case-insensitive match — eq silently matches 0 rows if case differs
+  // ilike = case-insensitive match so capitalisation differences don't break it
   const res = await fetch(
     `${supabaseUrl}/rest/v1/accounts?email=ilike.${encodeURIComponent(normalized)}`,
     {
@@ -74,18 +31,33 @@ async function markUserAsPaid(email) {
       body: JSON.stringify({ is_paid: true, paid_at: Date.now() }),
     }
   );
-  if (!res.ok) { console.error("Supabase PATCH failed:", await res.text()); return false; }
+
+  if (!res.ok) {
+    console.error("Supabase PATCH failed:", res.status, await res.text());
+    return false;
+  }
+
   const updated = await res.json();
   if (!Array.isArray(updated) || updated.length === 0) {
-    // Account doesn't exist yet — create it as paid
+    // Account doesn't exist yet — create it as paid so they're never blocked
     console.warn("No account found for", normalized, "— creating paid account");
     const ins = await fetch(`${supabaseUrl}/rest/v1/accounts`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "apikey": serviceKey, "Authorization": `Bearer ${serviceKey}`, "Prefer": "resolution=merge-duplicates" },
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": serviceKey,
+        "Authorization": `Bearer ${serviceKey}`,
+        "Prefer": "resolution=merge-duplicates",
+      },
       body: JSON.stringify({ email: normalized, is_paid: true, paid_at: Date.now() }),
     });
-    return ins.ok;
+    if (!ins.ok) {
+      console.error("Supabase INSERT failed:", ins.status, await ins.text());
+      return false;
+    }
+    return true;
   }
+
   console.log("Marked as paid:", normalized, `(${updated.length} row updated)`);
   return true;
 }
@@ -95,24 +67,31 @@ export default async function handler(req, res) {
 
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    console.error("STRIPE_WEBHOOK_SECRET is not set");
+    console.error("STRIPE_WEBHOOK_SECRET env var is not set");
     return res.status(500).json({ error: "Webhook secret not configured" });
   }
 
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeKey) {
+    console.error("STRIPE_SECRET_KEY env var is not set");
+    return res.status(500).json({ error: "Stripe key not configured" });
+  }
+
   const sigHeader = req.headers["stripe-signature"];
-  if (!sigHeader) return res.status(400).json({ error: "Missing Stripe signature" });
+  if (!sigHeader) return res.status(400).json({ error: "Missing Stripe-Signature header" });
 
   const rawBody = await readRawBody(req);
 
-  if (!verifyStripeSignature(rawBody, sigHeader, webhookSecret)) {
-    return res.status(400).json({ error: "Invalid signature" });
-  }
+  const stripe = new Stripe(stripeKey, { apiVersion: "2024-12-18.acacia" });
 
   let event;
   try {
-    event = JSON.parse(rawBody.toString("utf8"));
-  } catch {
-    return res.status(400).json({ error: "Invalid JSON" });
+    // Official Stripe SDK handles signature verification + replay attack protection
+    event = stripe.webhooks.constructEvent(rawBody, sigHeader, webhookSecret);
+  } catch (err) {
+    console.error("Stripe signature verification failed:", err.message);
+    // Return 400 so Stripe knows the payload was rejected (not a processing error)
+    return res.status(400).json({ error: `Webhook verification failed: ${err.message}` });
   }
 
   if (event.type === "checkout.session.completed") {
@@ -123,18 +102,23 @@ export default async function handler(req, res) {
       null;
 
     if (email) {
-      const ok = await markUserAsPaid(email);
-      if (!ok) {
-        console.error("Failed to mark user as paid:", email);
-        // Return 200 so Stripe doesn't retry — log for manual follow-up
-      } else {
-        console.log("Marked as paid:", email);
+      try {
+        const ok = await markUserAsPaid(email);
+        if (ok) {
+          console.log("Payment activated for:", email);
+        } else {
+          console.error("markUserAsPaid returned false for:", email);
+        }
+      } catch (err) {
+        console.error("markUserAsPaid threw:", err.message);
+        // Still return 200 — Stripe already delivered successfully,
+        // re-retrying won't help if it's a Supabase issue
       }
     } else {
-      console.warn("checkout.session.completed received but no customer email found");
+      console.warn("checkout.session.completed — no customer email in event:", JSON.stringify(session?.id));
     }
   }
 
-  // Always return 200 so Stripe marks the webhook as delivered
+  // Always 200 so Stripe marks the webhook as successfully delivered
   return res.status(200).json({ received: true });
 }
