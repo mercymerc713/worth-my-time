@@ -4209,7 +4209,7 @@ export default function App() {
               {minutes && <button onClick={handleClearTimeSearch} style={{background:"none",border:"none",color:"rgba(248,113,113,0.7)",fontSize:9,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>✕ Clear</button>}
             </div>
             <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-              {[["15 min",15],["30 min",30],["45 min",45],["1 hr",60],["1.5 hr",90],["2 hr",120],["3+ hr",180]].map(([label,val])=>(
+              {[["30 min",30],["45 min",45],["1 hr",60],["1.5 hr",90],["2 hr",120],["3+ hr",180]].map(([label,val])=>(
                 <button key={val} onClick={()=>handleTimeSearch(val)}
                   style={{background:minutes===String(val)?"rgba(167,139,250,0.25)":darkMode?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.06)",
                     border:`1px solid ${minutes===String(val)?"rgba(167,139,250,0.6)":darkMode?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.12)"}`,
