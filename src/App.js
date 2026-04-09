@@ -3954,44 +3954,53 @@ export default function App() {
     setActiveParentFilter(null);
     setMinutes(String(m));
 
-    // Each time window maps to DISTINCT genres so results never overlap
+    // Map session time → genre pool + max total playtime cap (hours, from RAWG)
+    // maxHrs is used client-side to reject games RAWG says take longer than the cap
     let timeGenres = "";
-    let ordering = "-released";
+    let ordering = "-rating";
+    let maxHrs = null;
 
     if (m <= 15) {
-      // Under 15 min — pure arcade, instant-play games
+      // Pure arcade/card — pick-up-and-play, complete in minutes
       timeGenres = "arcade,card-games";
       ordering = "-rating";
+      maxHrs = 3;
     } else if (m <= 30) {
-      // 15–30 min — puzzle and quick sports
-      timeGenres = "puzzle,sports,racing";
+      // Puzzle, quick sports, racing — natural 15-30 min loops
+      timeGenres = "puzzle,sports,racing,arcade,card-games";
       ordering = "-rating";
+      maxHrs = 8;
     } else if (m <= 45) {
-      // 30–45 min — fighting and platformers
-      timeGenres = "fighting,platformer";
-      ordering = "-released";
+      // Fighting, platformer — one match / one level = ~30-45 min
+      timeGenres = "fighting,platformer,puzzle,sports,racing";
+      ordering = "-rating";
+      maxHrs = 12;
     } else if (m <= 60) {
-      // 45–60 min — indie games designed for short sessions
-      timeGenres = "indie,shooter";
-      ordering = "-released";
+      // Indie and shooter — designed for 45-60 min sessions
+      timeGenres = "indie,shooter,platformer,fighting";
+      ordering = "-rating";
+      maxHrs = 20;
     } else if (m <= 90) {
-      // 60–90 min — action games with good pacing
-      timeGenres = "action,adventure";
-      ordering = "-released";
+      // Action/adventure — 60-90 min per play
+      timeGenres = "action,adventure,indie";
+      ordering = "-rating";
+      maxHrs = 40;
     } else if (m <= 120) {
-      // 90–120 min — deeper action and adventure
-      timeGenres = "action-adventure,massively-multiplayer";
+      // Deeper games — need 90+ min to feel progress
+      timeGenres = "action,adventure,action-adventure";
       ordering = "-metacritic";
+      maxHrs = null;
     } else {
-      // 2+ hours — RPGs, strategy, simulation
+      // Long-haul: RPG, strategy, simulation
       timeGenres = "role-playing-games-rpg,strategy,simulation";
       ordering = "-metacritic";
+      maxHrs = null;
     }
 
     setSearch("");
     setPage(1);
     setFilters(DEFAULT_FILTERS);
-    fetchGamesWithTime(timeGenres, ordering);
+    fetchGamesWithTime(timeGenres, ordering, maxHrs);
   };
 
   // Clear time search — go fully back to landing screen
@@ -4048,13 +4057,14 @@ export default function App() {
     setLoading(false);
   }, []);
 
-  const fetchGamesWithTime = useCallback(async (timeGenres, ordering="-released") => {
+  const fetchGamesWithTime = useCallback(async (timeGenres, ordering="-rating", maxHrs=null) => {
     setLoading(true); setError("");
     try {
       const todayDate = new Date().toISOString().split("T")[0];
+      // Fetch extra results so client-side filtering has enough to work with
       const params = new URLSearchParams({
         key: RAWG_KEY,
-        page_size: 40,
+        page_size: 60,
         page: 1,
         ordering,
         genres: timeGenres,
@@ -4067,9 +4077,11 @@ export default function App() {
       let results = (data.results || []).filter(g =>
         g.background_image && g.released && g.released <= todayDate
       );
-      results = results.sort((a, b) =>
-        new Date(b.released||"2000-01-01") - new Date(a.released||"2000-01-01")
-      );
+      // Client-side filter: RAWG's playtime field (hours) — only reject games
+      // that explicitly exceed our cap; 0 means no data so we keep those
+      if (maxHrs !== null) {
+        results = results.filter(g => !g.playtime || g.playtime <= maxHrs);
+      }
       setGames(results);
       setTotal(data.count || 0);
       setHasLoaded(true);
